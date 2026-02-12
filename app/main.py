@@ -1,3 +1,11 @@
+import sys
+from pathlib import Path
+
+# Ensure repo root is on the Python path so `import app...` works in Streamlit/Render
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from __future__ import annotations
 import streamlit as st
 from pathlib import Path
