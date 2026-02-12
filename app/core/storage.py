@@ -1,0 +1,133 @@
+from __future__ import annotations
+import sqlite3
+from pathlib import Path
+from typing import Optional, List, Dict, Any
+import json
+import time
+
+DEFAULT_DB = Path(__file__).resolve().parents[2] / "job_agent.sqlite3"
+
+
+def get_conn(db_path: Path = DEFAULT_DB) -> sqlite3.Connection:
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA foreign_keys=ON;")
+    return conn
+
+
+def init_db(db_path: Path = DEFAULT_DB) -> None:
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS resume ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "created_at INTEGER NOT NULL,"
+        "source TEXT NOT NULL,"
+        "raw_text TEXT NOT NULL)"
+    )
+
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS job ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "created_at INTEGER NOT NULL,"
+        "company TEXT,"
+        "title TEXT,"
+        "location TEXT,"
+        "url TEXT,"
+        "description TEXT NOT NULL)"
+    )
+
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS score ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "created_at INTEGER NOT NULL,"
+        "job_id INTEGER NOT NULL,"
+        "resume_id INTEGER NOT NULL,"
+        "model TEXT,"
+        "result_json TEXT NOT NULL,"
+        "FOREIGN KEY(job_id) REFERENCES job(id),"
+        "FOREIGN KEY(resume_id) REFERENCES resume(id))"
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def save_resume(source: str, raw_text: str, db_path: Path = DEFAULT_DB) -> int:
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO resume (created_at, source, raw_text) VALUES (?, ?, ?)",
+        (int(time.time()), source, raw_text),
+    )
+    conn.commit()
+    rid = int(cur.lastrowid)
+    conn.close()
+    return rid
+
+
+def save_job(
+    description: str,
+    company: Optional[str] = None,
+    title: Optional[str] = None,
+    location: Optional[str] = None,
+    url: Optional[str] = None,
+    db_path: Path = DEFAULT_DB,
+) -> int:
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO job (created_at, company, title, location, url, description) VALUES (?, ?, ?, ?, ?, ?)",
+        (int(time.time()), company, title, location, url, description),
+    )
+    conn.commit()
+    jid = int(cur.lastrowid)
+    conn.close()
+    return jid
+
+
+def save_score(
+    job_id: int,
+    resume_id: int,
+    result: Dict[str, Any],
+    model: Optional[str] = None,
+    db_path: Path = DEFAULT_DB,
+) -> int:
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO score (created_at, job_id, resume_id, model, result_json) VALUES (?, ?, ?, ?, ?)",
+        (int(time.time()), job_id, resume_id, model, json.dumps(result, ensure_ascii=False)),
+    )
+    conn.commit()
+    sid = int(cur.lastrowid)
+    conn.close()
+    return sid
+
+
+def list_recent_scores(limit: int = 20, db_path: Path = DEFAULT_DB) -> List[Dict[str, Any]]:
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT score.created_at, job.company, job.title, job.location, score.model, score.result_json "
+        "FROM score JOIN job ON job.id = score.job_id "
+        "ORDER BY score.created_at DESC LIMIT ?",
+        (limit,),
+    )
+    rows = cur.fetchall()
+    conn.close()
+
+    out: List[Dict[str, Any]] = []
+    for created_at, company, title, location, model, result_json in rows:
+        out.append(
+            {
+                "created_at": created_at,
+                "company": company,
+                "title": title,
+                "location": location,
+                "model": model,
+                "result": json.loads(result_json),
+            }
+        )
+    return out
