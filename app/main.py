@@ -12,7 +12,8 @@ import os
 from pathlib import Path
 from app.core.resume_parse import load_resume
 from app.core.storage import init_db, save_resume, save_job, save_score, list_recent_scores
-from app.core.scoring import heuristic_score, ai_score
+from app.core.scoring import heuristic_score, ai_score 
+from app.core.resume_tailor import tailor_resume_ai
 
 st.set_page_config(page_title="Executive Job Agent", layout="wide")
 
@@ -49,6 +50,7 @@ with col2:
 
 st.divider()
 run = st.button("Score this role", type="primary")
+tailor = st.button("Generate tailored résumé")
 
 def _save_uploaded(docx_file) -> str:
     tmp_dir = Path.cwd() / ".tmp_uploads"
@@ -74,6 +76,12 @@ if run:
     job_id = save_job(job_desc, company=company or None, title=title or None, location=location or None, url=url or None)
 
     result = None
+        # Save latest texts for resume tailoring
+    st.session_state["last_resume_text"] = resume.raw_text
+    st.session_state["last_job_text"] = job_desc
+    st.session_state["last_company"] = company or ""
+    st.session_state["last_title"] = title or ""
+
     model = None
     if use_ai:
         try:
@@ -136,4 +144,66 @@ else:
         loc = s.get("location") or ""
         overall = s["result"].get("overall_score", "—")
         st.markdown(f"**{overall}/100** — {title} @ {company} {('(' + loc + ')') if loc else ''}  \n_{ts}_")
+
+st.divider()
+st.subheader("Tailored résumé (AI)")
+
+if tailor:
+    resume_text = st.session_state.get("last_resume_text")
+    job_text = st.session_state.get("last_job_text")
+
+    if not resume_text or not job_text:
+        st.error("First, score a role so the app has your latest résumé + job description.")
+    else:
+        with st.spinner("Generating tailored résumé..."):
+            tailored = tailor_resume_ai(resume_text, job_text)
+
+        if not tailored:
+            st.error("AI tailoring is not available. Confirm OPENAI_API_KEY is set in Render Environment.")
+        else:
+            st.success("Tailored résumé generated.")
+
+            st.markdown("**Tailored headline**")
+            st.write(tailored.get("tailored_headline", ""))
+
+            st.markdown("**Tailored executive summary**")
+            for b in tailored.get("tailored_summary", []) or []:
+                st.write(f"- {b}")
+
+            st.markdown("**Core competencies**")
+            comps = tailored.get("core_competencies", []) or []
+            if comps:
+                st.write(", ".join(comps))
+
+            st.markdown("**Top rewrite instructions**")
+            for b in tailored.get("rewrite_instructions", []) or []:
+                st.write(f"- {b}")
+
+            st.markdown("**Tailored bullets by section**")
+            for section in tailored.get("tailored_bullets", []) or []:
+                st.write(f"**{section.get('section','')}**")
+                for b in section.get("bullets", []) or []:
+                    st.write(f"- {b}")
+
+            st.markdown("**ATS keywords**")
+            kws = tailored.get("ats_keywords", []) or []
+            if kws:
+                st.write(", ".join(kws))
+
+            st.markdown("**Paste-ready tailored résumé draft**")
+            final_text = tailored.get("final_resume_text", "")
+            st.text_area("Tailored résumé text", value=final_text, height=400)
+
+            filename = "tailored_resume.txt"
+            if st.session_state.get("last_company") or st.session_state.get("last_title"):
+                safe = f"{st.session_state.get('last_title','').strip()}_{st.session_state.get('last_company','').strip()}"
+                safe = "_".join(safe.split())
+                filename = f"tailored_resume_{safe[:60]}.txt"
+
+            st.download_button(
+                "Download tailored résumé (TXT)",
+                data=final_text.encode("utf-8"),
+                file_name=filename,
+                mime="text/plain",
+            )
 
