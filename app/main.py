@@ -6,8 +6,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-
 import streamlit as st
+import os
+
 from pathlib import Path
 from app.core.resume_parse import load_resume
 from app.core.storage import init_db, save_resume, save_job, save_score, list_recent_scores
@@ -24,6 +25,12 @@ with st.sidebar:
     st.header("Settings")
     min_base = st.number_input("Minimum base salary ($)", min_value=0, value=275000, step=5000)
     use_ai = st.toggle("Use AI (requires OPENAI_API_KEY in environment)", value=False)
+
+    st.divider()
+    st.subheader("AI status")
+    st.write("OPENAI_API_KEY set:", bool(os.getenv("OPENAI_API_KEY")))
+    st.write("OPENAI_MODEL:", os.getenv("OPENAI_MODEL", "(not set)"))
+
 
 col1, col2 = st.columns([1, 1])
 
