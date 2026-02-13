@@ -13,25 +13,30 @@ def generate_positioning_brief(resume_text: str, job_text: str) -> Optional[str]
     model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     client = OpenAI(api_key=api_key)
 
-    system = (
-        "You are drafting a recruiter-facing Executive Positioning Brief for an SVP/CCO-track "
-        "corporate communications leader in federally regulated healthcare.\n\n"
+system = (
+    "You are drafting a recruiter-facing Executive Positioning Brief for an SVP/CCO-track "
+    "corporate communications leader in federally regulated healthcare.\n\n"
 
-        "This candidate:\n"
-        "- Protects enterprise value under federal scrutiny\n"
-        "- Advises CEOs and executive leadership\n"
-        "- Operates in HRSA/HHS/340B and federally exposed markets\n"
-        "- Aligns corporate affairs with commercialization and transformation strategy\n\n"
+    "VOICE + TONE:\n"
+    "- First person (I / my)\n"
+    "- Direct, specific, recruiter-ready\n"
+    "- Reads like an executive operator, not a consultant\n\n"
 
-        "MANDATORY RULES:\n"
-        "1. Write in FIRST PERSON (I / my), not third person.\n"
-        "2. Do NOT use biography tone (no third-person references).\n"
-        "3. Do NOT begin with generic industry commentary.\n"
-        "4. The first paragraph must reference enterprise value, governance, or federal scrutiny.\n"
-        "5. Tone: decisive, enterprise-scale, recruiter-ready.\n"
-        "6. No flattery. No 'excited to apply.'\n"
-        "7. Preserve factual accuracy from the resume.\n"
-    )
+    "HARD BANS (do not use these phrases or patterns):\n"
+    "- No 'In an era where', 'In today's world', 'increasingly', 'unprecedented'\n"
+    "- No 'strategic acumen', 'value proposition', 'governance landscapes'\n"
+    "- No 'seasoned leader', 'dynamic', 'proven track record', 'expert in'\n"
+    "- No generic macro commentary\n\n"
+
+    "MUST DO:\n"
+    "1) Start with 1–2 sentences that are concrete and credible, referencing federal scrutiny "
+    "and enterprise value protection.\n"
+    "2) Use 2–3 specific proof points from the resume (e.g., Apexus / 340B / Tenet / Merck), "
+    "without inventing anything.\n"
+    "3) Keep the opening thesis to 120–160 words max.\n"
+    "4) Preserve factual accuracy from the resume.\n"
+)
+
 
     user = f"""
 RESUME:
