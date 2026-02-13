@@ -15,6 +15,7 @@ from app.core.resume_parse import load_resume
 from app.core.storage import init_db, save_resume, save_job, save_score, list_recent_scores
 from app.core.scoring import heuristic_score, ai_score 
 from app.core.resume_tailor import tailor_resume_ai
+from app.core.positioning_brief import generate_positioning_brief
 
 st.set_page_config(page_title="Executive Job Agent", layout="wide")
 
@@ -52,6 +53,7 @@ with col2:
 st.divider()
 run = st.button("Score this role", type="primary")
 tailor = st.button("Generate tailored résumé")
+brief = st.button("Generate positioning brief (1-page)")
 
 def _save_uploaded(docx_file) -> str:
     tmp_dir = Path.cwd() / ".tmp_uploads"
@@ -200,6 +202,33 @@ if tailor:
                 safe = f"{st.session_state.get('last_title','').strip()}_{st.session_state.get('last_company','').strip()}"
                 safe = "_".join(safe.split())
                 filename = f"tailored_resume_{safe[:60]}.txt"
+st.divider()
+st.subheader("Executive Positioning Brief (1-page)")
+
+if brief:
+    resume_text = st.session_state.get("last_resume_text")
+    job_text = st.session_state.get("last_job_text")
+
+    if not resume_text or not job_text:
+        st.error("First, score a role so the app has your latest résumé + job description.")
+    else:
+        with st.spinner("Generating positioning brief..."):
+            memo = generate_positioning_brief(resume_text, job_text)
+
+        if not memo:
+            st.error("Brief generator is not available. Confirm OPENAI_API_KEY is set in Render Environment.")
+        else:
+            st.success("Positioning brief generated.")
+            st.text_area("Positioning brief", value=memo, height=450)
+
+            st.download_button(
+                "Download positioning brief (TXT)",
+                data=memo.encode("utf-8"),
+                file_name="positioning_brief.txt",
+                mime="text/plain",
+            )
+
+            
 
             st.download_button(
                 "Download tailored résumé (TXT)",
