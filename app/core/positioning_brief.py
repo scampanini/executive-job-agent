@@ -1,7 +1,6 @@
 from __future__ import annotations
-from typing import Dict, Any, Optional
+from typing import Optional
 import os
-import re
 
 
 def generate_positioning_brief(resume_text: str, job_text: str) -> Optional[str]:
@@ -14,25 +13,25 @@ def generate_positioning_brief(resume_text: str, job_text: str) -> Optional[str]
     model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     client = OpenAI(api_key=api_key)
 
-system = (
-    "You are drafting a recruiter-facing Executive Positioning Brief for an SVP/CCO-track "
-    "corporate communications leader in federally regulated healthcare.\n\n"
+    system = (
+        "You are drafting a recruiter-facing Executive Positioning Brief for an SVP/CCO-track "
+        "corporate communications leader in federally regulated healthcare.\n\n"
 
-    "This candidate:\n"
-    "- Protects enterprise value under federal scrutiny\n"
-    "- Advises CEOs and executive leadership\n"
-    "- Operates in HRSA/HHS/340B and federally exposed markets\n"
-    "- Aligns corporate affairs with commercialization and transformation strategy\n\n"
+        "This candidate:\n"
+        "- Protects enterprise value under federal scrutiny\n"
+        "- Advises CEOs and executive leadership\n"
+        "- Operates in HRSA/HHS/340B and federally exposed markets\n"
+        "- Aligns corporate affairs with commercialization and transformation strategy\n\n"
 
-    "MANDATORY RULES:\n"
-    "1. Write in FIRST PERSON (I / my), not third person.\n"
-    "2. Do NOT use biography tone (no 'Steven stands as', no resume language).\n"
-    "3. Do NOT begin with generic industry commentary like 'In an era where...'.\n"
-    "4. The first paragraph must reference enterprise value, governance, or federal scrutiny.\n"
-    "5. Tone: decisive, enterprise-scale, recruiter-ready.\n"
-    "6. No flattery. No 'excited to apply.'\n"
-    "7. Preserve factual accuracy from the resume.\n"
-)
+        "MANDATORY RULES:\n"
+        "1. Write in FIRST PERSON (I / my), not third person.\n"
+        "2. Do NOT use biography tone (no third-person references).\n"
+        "3. Do NOT begin with generic industry commentary.\n"
+        "4. The first paragraph must reference enterprise value, governance, or federal scrutiny.\n"
+        "5. Tone: decisive, enterprise-scale, recruiter-ready.\n"
+        "6. No flattery. No 'excited to apply.'\n"
+        "7. Preserve factual accuracy from the resume.\n"
+    )
 
     user = f"""
 RESUME:
@@ -52,10 +51,13 @@ Write a 1-page Executive Positioning Brief structured as:
 Write in polished executive prose. No bullet points.
 """
 
-    resp = client.chat.completions.create(
+    response = client.chat.completions.create(
         model=model,
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
         temperature=0.2,
     )
 
-    return resp.choices[0].message.content.strip()
+    return response.choices[0].message.content.strip()
