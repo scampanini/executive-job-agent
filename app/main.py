@@ -239,7 +239,7 @@ if brief:
                 mime="text/plain",
             )
 
- st.divider()
+st.divider()
 st.subheader("Pipeline Tracker")
 
 PIPELINE_STAGES = [
