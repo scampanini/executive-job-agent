@@ -26,6 +26,7 @@ from app.core.storage import (
 from app.core.scoring import heuristic_score, ai_score 
 from app.core.resume_tailor import tailor_resume_ai
 from app.core.positioning_brief import generate_positioning_brief
+from app.core.recruiter_outreach import generate_recruiter_outreach
 
 st.set_page_config(page_title="Executive Job Agent", layout="wide")
 
@@ -335,3 +336,48 @@ else:
                 st.success("Updated. Refreshing list...")
                 st.rerun()
 
+st.divider()
+st.subheader("Recruiter Outreach Kit")
+
+outreach = st.button("Generate recruiter outreach kit")
+
+if outreach:
+    resume_text = st.session_state.get("last_resume_text")
+    job_text = st.session_state.get("last_job_text")
+
+    if not resume_text or not job_text:
+        st.error("First, score a role so the app has your latest résumé + job description.")
+    else:
+        with st.spinner("Generating outreach kit..."):
+            kit = generate_recruiter_outreach(resume_text, job_text)
+
+        if not kit:
+            st.error("Outreach kit is not available. Confirm OPENAI_API_KEY is set in Render Environment.")
+        else:
+            st.success("Outreach kit generated.")
+
+            st.markdown("### Recruiter email")
+            email_text = kit.get("email", "")
+            st.text_area("Email", value=email_text, height=180)
+
+            st.markdown("### LinkedIn message")
+            li_text = kit.get("linkedin", "")
+            st.text_area("LinkedIn", value=li_text, height=120)
+
+            st.markdown("### First-call talking points")
+            call_text = kit.get("call_talking_points", "")
+            st.text_area("Call talking points", value=call_text, height=160)
+
+            st.download_button(
+                "Download outreach kit (TXT)",
+                data=(
+                    "RECRUITER EMAIL\n\n"
+                    + email_text
+                    + "\n\nLINKEDIN MESSAGE\n\n"
+                    + li_text
+                    + "\n\nFIRST-CALL TALKING POINTS\n\n"
+                    + call_text
+                ).encode("utf-8"),
+                file_name="recruiter_outreach_kit.txt",
+                mime="text/plain",
+            )
