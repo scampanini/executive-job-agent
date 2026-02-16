@@ -227,14 +227,15 @@ if brief:
             memo = generate_positioning_brief(resume_text, job_text)
 
         if memo:
-            st.text_area("Positioning brief", value=memo, height=450)
+st.download_button(
+    "Download positioning brief (TXT)",
+    data=memo.encode("utf-8"),
+    file_name="positioning_brief.txt",
+    mime="text/plain",
+)
+          st.text_area("Positioning brief", value=memo, height=450)
 
-            st.download_button(
-                "Download positioning brief (TXT)",
-                data=memo.encode("utf-8"),
-                file_name="positioning_brief.txt",
-                mime="text/plain",
-            )
+            
 
 
 st.divider()
