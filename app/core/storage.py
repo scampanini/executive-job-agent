@@ -5,7 +5,7 @@ from typing import Optional, List, Dict, Any
 import json
 import time
 
-DEFAULT_DB = Path(__file__).resolve().parents[2] / "job_agent.sqlite3"
+DEFAULT_DB = Path(__file__).resolve().parents[3] / "job_agent.sqlite3"
 
 
 def get_conn(db_path: Path = DEFAULT_DB) -> sqlite3.Connection:
