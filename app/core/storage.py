@@ -105,6 +105,19 @@ def save_score(
     conn.close()
     return sid
 
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS pipeline ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "created_at INTEGER NOT NULL,"
+        "updated_at INTEGER NOT NULL,"
+        "job_id INTEGER NOT NULL,"
+        "stage TEXT NOT NULL,"
+        "next_action_date TEXT,"
+        "notes TEXT,"
+        "is_active INTEGER NOT NULL DEFAULT 1,"
+        "FOREIGN KEY(job_id) REFERENCES job(id))"
+    )
+
 
 def list_recent_scores(limit: int = 20, db_path: Path = DEFAULT_DB) -> List[Dict[str, Any]]:
     conn = get_conn(db_path)
