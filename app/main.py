@@ -213,6 +213,7 @@ if tailor:
                 safe = f"{st.session_state.get('last_title','').strip()}_{st.session_state.get('last_company','').strip()}"
                 safe = "_".join(safe.split())
                 filename = f"tailored_resume_{safe[:60]}.txt"
+
 st.divider()
 st.subheader("Executive Positioning Brief (1-page)")
 
@@ -227,16 +228,14 @@ if brief:
             memo = generate_positioning_brief(resume_text, job_text)
 
         if memo:
-st.download_button(
-    "Download positioning brief (TXT)",
-    data=memo.encode("utf-8"),
-    file_name="positioning_brief.txt",
-    mime="text/plain",
-)
-          st.text_area("Positioning brief", value=memo, height=450)
+            st.text_area("Positioning brief", value=memo, height=450)
 
-            
-
+            st.download_button(
+                "Download positioning brief (TXT)",
+                data=memo.encode("utf-8"),
+                file_name="positioning_brief.txt",
+                mime="text/plain",
+            )
 
 st.divider()
 st.subheader("Pipeline Tracker")
@@ -335,14 +334,4 @@ else:
                 )
                 st.success("Updated. Refreshing list...")
                 st.rerun()
-
-        st.divider()
-           
-
-        st.download_button(
-                "Download tailored résumé (TXT)",
-                data=memo.encode("utf-8"),
-                file_name="tailored_resume.text",
-                mime="text/plain",
-            )
 
