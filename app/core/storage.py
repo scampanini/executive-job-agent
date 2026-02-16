@@ -144,3 +144,82 @@ def list_recent_scores(limit: int = 20, db_path: Path = DEFAULT_DB) -> List[Dict
             }
         )
     return out
+
+def create_pipeline_item(
+    job_id: int,
+    stage: str,
+    next_action_date: Optional[str] = None,
+    notes: Optional[str] = None,
+    db_path: Path = DEFAULT_DB,
+) -> int:
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    now = int(time.time())
+    cur.execute(
+        "INSERT INTO pipeline (created_at, updated_at, job_id, stage, next_action_date, notes, is_active) "
+        "VALUES (?, ?, ?, ?, ?, ?, 1)",
+        (now, now, job_id, stage, next_action_date, notes),
+    )
+    conn.commit()
+    pid = int(cur.lastrowid)
+    conn.close()
+    return pid
+
+
+def update_pipeline_item(
+    pipeline_id: int,
+    stage: str,
+    next_action_date: Optional[str] = None,
+    notes: Optional[str] = None,
+    is_active: bool = True,
+    db_path: Path = DEFAULT_DB,
+) -> None:
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    now = int(time.time())
+    cur.execute(
+        "UPDATE pipeline SET updated_at=?, stage=?, next_action_date=?, notes=?, is_active=? WHERE id=?",
+        (now, stage, next_action_date, notes, 1 if is_active else 0, pipeline_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def list_pipeline_items(active_only: bool = True, limit: int = 50, db_path: Path = DEFAULT_DB) -> List[Dict[str, Any]]:
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+
+    where = "WHERE pipeline.is_active=1" if active_only else ""
+    cur.execute(
+        "SELECT pipeline.id, pipeline.created_at, pipeline.updated_at, pipeline.stage, pipeline.next_action_date, pipeline.notes, "
+        "job.id, job.company, job.title, job.location, job.url "
+        "FROM pipeline JOIN job ON job.id = pipeline.job_id "
+        f"{where} "
+        "ORDER BY pipeline.updated_at DESC LIMIT ?",
+        (limit,),
+    )
+    rows = cur.fetchall()
+    conn.close()
+
+    out: List[Dict[str, Any]] = []
+    for (
+        pipeline_id, created_at, updated_at, stage, next_action_date, notes,
+        job_id, company, title, location, url
+    ) in rows:
+        out.append(
+            {
+                "pipeline_id": pipeline_id,
+                "created_at": created_at,
+                "updated_at": updated_at,
+                "stage": stage,
+                "next_action_date": next_action_date,
+                "notes": notes,
+                "job_id": job_id,
+                "company": company,
+                "title": title,
+                "location": location,
+                "url": url,
+            }
+        )
+    return out
+
