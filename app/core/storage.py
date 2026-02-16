@@ -1,10 +1,13 @@
 from __future__ import annotations
+
+import json
 import sqlite3
+import time
 from pathlib import Path
 from typing import Optional, List, Dict, Any
-import json
-import time
 
+# storage.py lives at: repo/app/core/storage.py
+# parents[3] -> repo root
 DEFAULT_DB = Path(__file__).resolve().parents[3] / "job_agent.sqlite3"
 
 
@@ -19,6 +22,7 @@ def init_db(db_path: Path = DEFAULT_DB) -> None:
     conn = get_conn(db_path)
     cur = conn.cursor()
 
+    # Resume table
     cur.execute(
         "CREATE TABLE IF NOT EXISTS resume ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -27,6 +31,7 @@ def init_db(db_path: Path = DEFAULT_DB) -> None:
         "raw_text TEXT NOT NULL)"
     )
 
+    # Job table
     cur.execute(
         "CREATE TABLE IF NOT EXISTS job ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -38,6 +43,7 @@ def init_db(db_path: Path = DEFAULT_DB) -> None:
         "description TEXT NOT NULL)"
     )
 
+    # Score table
     cur.execute(
         "CREATE TABLE IF NOT EXISTS score ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -50,11 +56,26 @@ def init_db(db_path: Path = DEFAULT_DB) -> None:
         "FOREIGN KEY(resume_id) REFERENCES resume(id))"
     )
 
+    # Pipeline table
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS pipeline ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "created_at INTEGER NOT NULL,"
+        "updated_at INTEGER NOT NULL,"
+        "job_id INTEGER NOT NULL,"
+        "stage TEXT NOT NULL,"
+        "next_action_date TEXT,"
+        "notes TEXT,"
+        "is_active INTEGER NOT NULL DEFAULT 1,"
+        "FOREIGN KEY(job_id) REFERENCES job(id))"
+    )
+
     conn.commit()
     conn.close()
 
 
 def save_resume(source: str, raw_text: str, db_path: Path = DEFAULT_DB) -> int:
+    init_db(db_path)
     conn = get_conn(db_path)
     cur = conn.cursor()
     cur.execute(
@@ -75,6 +96,7 @@ def save_job(
     url: Optional[str] = None,
     db_path: Path = DEFAULT_DB,
 ) -> int:
+    init_db(db_path)
     conn = get_conn(db_path)
     cur = conn.cursor()
     cur.execute(
@@ -94,6 +116,7 @@ def save_score(
     model: Optional[str] = None,
     db_path: Path = DEFAULT_DB,
 ) -> int:
+    init_db(db_path)
     conn = get_conn(db_path)
     cur = conn.cursor()
     cur.execute(
@@ -105,21 +128,9 @@ def save_score(
     conn.close()
     return sid
 
-    cur.execute(
-        "CREATE TABLE IF NOT EXISTS pipeline ("
-        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-        "created_at INTEGER NOT NULL,"
-        "updated_at INTEGER NOT NULL,"
-        "job_id INTEGER NOT NULL,"
-        "stage TEXT NOT NULL,"
-        "next_action_date TEXT,"
-        "notes TEXT,"
-        "is_active INTEGER NOT NULL DEFAULT 1,"
-        "FOREIGN KEY(job_id) REFERENCES job(id))"
-    )
-
 
 def list_recent_scores(limit: int = 20, db_path: Path = DEFAULT_DB) -> List[Dict[str, Any]]:
+    init_db(db_path)
     conn = get_conn(db_path)
     cur = conn.cursor()
     cur.execute(
@@ -145,6 +156,11 @@ def list_recent_scores(limit: int = 20, db_path: Path = DEFAULT_DB) -> List[Dict
         )
     return out
 
+
+# -------------------------
+# Pipeline helpers (CRM)
+# -------------------------
+
 def create_pipeline_item(
     job_id: int,
     stage: str,
@@ -152,6 +168,7 @@ def create_pipeline_item(
     notes: Optional[str] = None,
     db_path: Path = DEFAULT_DB,
 ) -> int:
+    init_db(db_path)
     conn = get_conn(db_path)
     cur = conn.cursor()
     now = int(time.time())
@@ -174,6 +191,7 @@ def update_pipeline_item(
     is_active: bool = True,
     db_path: Path = DEFAULT_DB,
 ) -> None:
+    init_db(db_path)
     conn = get_conn(db_path)
     cur = conn.cursor()
     now = int(time.time())
@@ -185,16 +203,21 @@ def update_pipeline_item(
     conn.close()
 
 
-def list_pipeline_items(active_only: bool = True, limit: int = 50, db_path: Path = DEFAULT_DB) -> List[Dict[str, Any]]:
+def list_pipeline_items(
+    active_only: bool = True,
+    limit: int = 50,
+    db_path: Path = DEFAULT_DB,
+) -> List[Dict[str, Any]]:
+    init_db(db_path)
     conn = get_conn(db_path)
     cur = conn.cursor()
 
-    where = "WHERE pipeline.is_active=1" if active_only else ""
+    where_clause = "WHERE pipeline.is_active=1" if active_only else ""
     cur.execute(
         "SELECT pipeline.id, pipeline.created_at, pipeline.updated_at, pipeline.stage, pipeline.next_action_date, pipeline.notes, "
         "job.id, job.company, job.title, job.location, job.url "
         "FROM pipeline JOIN job ON job.id = pipeline.job_id "
-        f"{where} "
+        f"{where_clause} "
         "ORDER BY pipeline.updated_at DESC LIMIT ?",
         (limit,),
     )
@@ -222,4 +245,3 @@ def list_pipeline_items(active_only: bool = True, limit: int = 50, db_path: Path
             }
         )
     return out
-
