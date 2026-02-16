@@ -226,10 +226,7 @@ if brief:
         with st.spinner("Generating positioning brief..."):
             memo = generate_positioning_brief(resume_text, job_text)
 
-        if not memo:
-            st.error("Brief generator is not available. Confirm OPENAI_API_KEY is set in Render Environment.")
-        else:
-            st.success("Positioning brief generated.")
+        if memo:
             st.text_area("Positioning brief", value=memo, height=450)
 
             st.download_button(
@@ -238,6 +235,7 @@ if brief:
                 file_name="positioning_brief.txt",
                 mime="text/plain",
             )
+
 
 st.divider()
 st.subheader("Pipeline Tracker")
@@ -340,7 +338,7 @@ else:
         st.divider()
            
 
-            st.download_button(
+        st.download_button(
                 "Download tailored résumé (TXT)",
                 data=memo.encode("utf-8"),
                 file_name="tailored_resume.text",
