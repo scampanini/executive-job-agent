@@ -12,7 +12,17 @@ import os
 
 from pathlib import Path
 from app.core.resume_parse import load_resume
-from app.core.storage import init_db, save_resume, save_job, save_score, list_recent_scores
+from app.core.storage import (
+    init_db,
+    save_resume,
+    save_job,
+    save_score,
+    list_recent_scores,
+    create_pipeline_item,
+    update_pipeline_item,
+    list_pipeline_items,
+)
+
 from app.core.scoring import heuristic_score, ai_score 
 from app.core.resume_tailor import tailor_resume_ai
 from app.core.positioning_brief import generate_positioning_brief
@@ -77,6 +87,7 @@ if run:
 
     resume_id = save_resume(resume.source, resume.raw_text)
     job_id = save_job(job_desc, company=company or None, title=title or None, location=location or None, url=url or None)
+    st.session_state["last_job_id"] = job_id
 
     result = None
         # Save latest texts for resume tailoring
@@ -228,7 +239,106 @@ if brief:
                 mime="text/plain",
             )
 
-            
+ st.divider()
+st.subheader("Pipeline Tracker")
+
+PIPELINE_STAGES = [
+    "Interested",
+    "Applied",
+    "Recruiter outreach",
+    "Recruiter screen",
+    "Hiring manager screen",
+    "Interview loop",
+    "Finalist",
+    "Offer",
+    "Rejected",
+    "Withdrawn",
+]
+
+with st.expander("Add current role to pipeline", expanded=False):
+    st.caption("Tip: Score a role first so company/title are captured, then add it to your pipeline.")
+    default_stage = "Interested"
+    stage = st.selectbox("Stage", PIPELINE_STAGES, index=PIPELINE_STAGES.index(default_stage))
+    next_action = st.text_input("Next action date (YYYY-MM-DD)", value="")
+    notes = st.text_area("Notes", height=120)
+
+    add_to_pipeline = st.button("Add to pipeline")
+
+    if add_to_pipeline:
+        # We add the MOST RECENT job in the database as the pipeline item.
+        # (Simple MVP behavior; we can enhance to choose a job from a dropdown.)
+        recent = list_recent_scores(limit=1)
+        if not recent:
+            st.error("No scored role found yet. Score a job first, then add it to pipeline.")
+        else:
+            # We need the job_id, but list_recent_scores doesn't return it.
+            # MVP workaround: store last_job_id in session state when scoring.
+            job_id = st.session_state.get("last_job_id")
+            if not job_id:
+                st.error("Missing last job reference. Score a role again, then click 'Add to pipeline'.")
+            else:
+                create_pipeline_item(
+                    job_id=job_id,
+                    stage=stage,
+                    next_action_date=next_action or None,
+                    notes=notes or None,
+                )
+                st.success("Added to pipeline.")
+
+st.markdown("### Active roles")
+items = list_pipeline_items(active_only=True, limit=50)
+
+if not items:
+    st.info("No active pipeline items yet.")
+else:
+    for it in items:
+        title = it.get("title") or "—"
+        company = it.get("company") or "—"
+        loc = it.get("location") or ""
+        url = it.get("url") or ""
+        header = f"{title} @ {company}" + (f" ({loc})" if loc else "")
+        st.markdown(f"**{header}**")
+        if url:
+            st.write(url)
+        st.write(f"Stage: **{it['stage']}**")
+        if it.get("next_action_date"):
+            st.write(f"Next action: **{it['next_action_date']}**")
+        if it.get("notes"):
+            st.write(it["notes"])
+
+        with st.expander("Update this pipeline item", expanded=False):
+            new_stage = st.selectbox(
+                "New stage",
+                PIPELINE_STAGES,
+                index=PIPELINE_STAGES.index(it["stage"]) if it["stage"] in PIPELINE_STAGES else 0,
+                key=f"stage_{it['pipeline_id']}",
+            )
+            new_next = st.text_input(
+                "Next action date (YYYY-MM-DD)",
+                value=it.get("next_action_date") or "",
+                key=f"next_{it['pipeline_id']}",
+            )
+            new_notes = st.text_area(
+                "Notes",
+                value=it.get("notes") or "",
+                height=120,
+                key=f"notes_{it['pipeline_id']}",
+            )
+            deactivate = st.checkbox("Mark inactive (closed)", value=False, key=f"closed_{it['pipeline_id']}")
+
+            if st.button("Save update", key=f"save_{it['pipeline_id']}"):
+                update_pipeline_item(
+                    pipeline_id=it["pipeline_id"],
+                    stage=new_stage,
+                    next_action_date=new_next or None,
+                    notes=new_notes or None,
+                    is_active=not deactivate,
+                )
+                st.success("Updated. Refreshing list...")
+                st.rerun()
+
+        st.divider()
+           
 
             st.download_button(
                 "Download tailored résumé (TXT)",
