@@ -233,7 +233,7 @@ if brief:
             st.download_button(
                 "Download tailored résumé (TXT)",
                 data=memo.encode("utf-8"),
-                file_name=filename,
+                file_name="tailored_resume.text",
                 mime="text/plain",
             )
 
