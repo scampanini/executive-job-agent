@@ -278,10 +278,6 @@ else:
         priority=priority,
     )
     st.success("Added to pipeline.")
-else:
-    score_data = st.session_state.get("last_score_result", {})
-    fit_score = score_data.get("total_score")
-    priority = score_data.get("priority")
 
     create_pipeline_item(
         job_id=job_id,
