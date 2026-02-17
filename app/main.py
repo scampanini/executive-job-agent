@@ -262,18 +262,22 @@ with st.expander("Add current role to pipeline", expanded=False):
 
     add_to_pipeline = st.button("Add to pipeline")
 
-    if add_to_pipeline:
-        # We add the MOST RECENT job in the database as the pipeline item.
-        # (Simple MVP behavior; we can enhance to choose a job from a dropdown.)
-        recent = list_recent_scores(limit=1)
-        if not recent:
-            st.error("No scored role found yet. Score a job first, then add it to pipeline.")
-        else:
-            # We need the job_id, but list_recent_scores doesn't return it.
-            # MVP workaround: store last_job_id in session state when scoring.
-            job_id = st.session_state.get("last_job_id")
-            if not job_id:
-                st.error("Missing last job reference. Score a role again, then click 'Add to pipeline'.")
+if not job_id:
+    st.error("Missing last job reference. Score a role again, then click 'Add to pipeline'.")
+else:
+    score_data = st.session_state.get("last_score_result", {})
+    fit_score = score_data.get("total_score")
+    priority = score_data.get("priority")
+
+    create_pipeline_item(
+        job_id=job_id,
+        stage=stage,
+        next_action_date=next_action or None,
+        notes=notes or None,
+        fit_score=fit_score,
+        priority=priority,
+    )
+    st.success("Added to pipeline.")
 else:
     score_data = st.session_state.get("last_score_result", {})
     fit_score = score_data.get("total_score")
