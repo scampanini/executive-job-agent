@@ -380,7 +380,6 @@ PIPELINE_STAGES = [
     "Rejected",
     "Withdrawn",
 ]
-
 with st.expander("Add current role to pipeline", expanded=False):
     st.caption("Tip: Score a role first so company/title are captured, then add it to your pipeline.")
     stage = st.selectbox("Stage", PIPELINE_STAGES, index=0)
