@@ -91,15 +91,15 @@ col_l, col_r = st.columns(2)
 with col_l:
     st.subheader("1) Upload your résumé")
     uploaded = st.file_uploader("Upload résumé (PDF/DOCX)", type=["pdf", "docx"])
-    if uploaded:
-        try:
-import tempfile
+if uploaded:
+    import tempfile
 
-suffix = ".pdf" if uploaded.type == "application/pdf" else ".docx"
-with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-    tmp.write(uploaded.getvalue())
-    tmp_path = tmp.name
-
+    suffix = ".pdf" if uploaded.type == "application/pdf" else ".docx"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(uploaded.getvalue())
+        tmp_path = tmp.name
+        
+    try:
             resume = load_resume(tmp_path, None)
             resume_text = getattr(resume, "raw_text", None) or getattr(resume, "text", None) or str(resume)
             resume_source = getattr(resume, "source", None) or getattr(uploaded, "name", "upload")
@@ -107,7 +107,7 @@ with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         except Exception as e:
             st.error(f"Could not parse résumé: {e}")
             resume_text = ""
-            resume_source = "upload"
+            resume_source = ""
     else:
         resume_text = ""
         resume_source = ""
