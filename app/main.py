@@ -10,7 +10,6 @@ if str(ROOT) not in sys.path:
 import streamlit as st
 import os
 
-from pathlib import Path
 from app.core.resume_parse import load_resume
 from app.core.storage import (
     init_db,
