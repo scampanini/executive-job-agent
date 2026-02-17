@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
@@ -34,12 +35,45 @@ def extract_text_from_docx(path: str | pathlib.Path) -> str:
     return "\n".join(parts).strip()
 
 
-def load_resume(docx_path: Optional[str], pasted_text: Optional[str]) -> ResumeContent:
-    if docx_path:
-        txt = extract_text_from_docx(docx_path)
-        return ResumeContent(raw_text=txt, source="docx")
+from pathlib import Path
 
-    if pasted_text and pasted_text.strip():
-        return ResumeContent(raw_text=pasted_text.strip(), source="text")
+def load_resume(file_path, pasted_text=None):
+    path = Path(file_path)
 
-    raise ValueError("Provide either a DOCX file or pasted résumé text.")
+    # If pasted text exists, trust it
+    if pasted_text:
+        return SimpleNamespace(
+            raw_text=pasted_text,
+            source="pasted_text",
+        )
+
+    # DOCX handling
+    if path.suffix.lower() == ".docx":
+        from docx import Document
+        doc = Document(str(path))
+        text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+        return SimpleNamespace(
+            raw_text=text,
+            source=path.name,
+        )
+
+    # PDF handling
+    if path.suffix.lower() == ".pdf":
+        import pdfplumber
+        pages = []
+        with pdfplumber.open(str(path)) as pdf:
+            for page in pdf.pages:
+                txt = page.extract_text()
+                if txt:
+                    pages.append(txt)
+
+        if not pages:
+            raise ValueError("PDF parsed but no extractable text found.")
+
+        return SimpleNamespace(
+            raw_text="\n".join(pages),
+            source=path.name,
+        )
+
+    raise ValueError(f"Unsupported resume format: {path.suffix}")
+
