@@ -75,7 +75,9 @@ def _save_uploaded(docx_file) -> str:
 if run:
     if not job_desc.strip():
         st.error("Please paste a job description.")
-        st.stop()
+        st.stop()     
+        st.session_state["last_job_id"] = job_id
+        st.session_state["last_score_result"] = score_result
 
     docx_path = _save_uploaded(docx) if docx is not None else None
 
@@ -260,14 +262,14 @@ with st.expander("Add current role to pipeline", expanded=False):
     next_action = st.text_input("Next action date (YYYY-MM-DD)", value="")
     notes = st.text_area("Notes", height=120)
 
-    add_to_pipeline = st.button("Add to pipeline")
+add_to_pipeline = st.button("Add to pipeline")
 
 if add_to_pipeline:
     job_id = st.session_state.get("last_job_id")
 
     if not job_id:
         st.error("Missing last job reference. Score a role first, then add it to the pipeline.")
-        return
+        st.stop()
 
     score_data = st.session_state.get("last_score_result", {})
     fit_score = score_data.get("total_score")
@@ -283,8 +285,6 @@ if add_to_pipeline:
     )
     st.success("Added to pipeline.")
 
-st.session_state["last_job_id"] = job_id
-st.session_state["last_score_result"] = score_result
 
 if not job_id:
     st.error("Missing last job reference. Score a role again, then click 'Add to pipeline'.")
