@@ -166,13 +166,46 @@ if run:
     if isinstance(result, dict) and result.get("error"):
         st.warning(result["error"])
 
-    total = None
-    if isinstance(result, dict):
-        total = result.get("total_score", None) or result.get("score", None)
+    if not isinstance(result, dict):
+        st.write(result)
+    else:
+        overall = result.get("overall_score") or result.get("total_score") or result.get("score")
+        priority = result.get("priority")
 
-    if total is not None:
-        st.success(f"Score: {total}")
+        st.subheader("Fit score")
+        if overall is not None:
+            st.metric("Overall Score", overall)
+        if priority:
+            st.write(f"Priority: **{priority}**")
+
+        def _render_list(title: str, key: str):
+            items = result.get(key) or []
+            if items:
+                st.subheader(title)
+                for x in items:
+                    st.write(f"- {x}")
+
+        _render_list("Why this fits", "why_this_fits")
+        _render_list("Risks / gaps", "risks_or_gaps")
+        _render_list("Top résumé edits", "top_resume_edits")
+        _render_list("Interview leverage points", "interview_leverage_points")
+
+        pitch = result.get("two_line_pitch")
+        if pitch:
+            st.subheader("Two-line pitch")
+            st.write(pitch)
+
+        # Optional: keep any dimensions if your scorer returns them
+        dims = result.get("dimensions")
+        if dims:
+            st.subheader("Dimensions (debug)")
+            st.json(dims)
+
+        with st.expander("Full scoring output (debug)", expanded=False):
+            st.json(result)
+
     st.info(f"Scoring mode used: {model_used}")
+
 
     if isinstance(result, dict):
         dims = result.get("dimensions")
@@ -362,7 +395,7 @@ with st.expander("Add current role to pipeline", expanded=False):
             st.stop()
 
         score_data = st.session_state.get("last_score_result", {}) or {}
-        fit_score = score_data.get("total_score")
+fit_score = score_data.get("overall_score") or score_data.get("total_score") or score_data.get("score")
         priority = score_data.get("priority")
 
         create_pipeline_item(
