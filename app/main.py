@@ -76,8 +76,6 @@ if run:
     if not job_desc.strip():
         st.error("Please paste a job description.")
         st.stop()     
-        st.session_state["last_job_id"] = job_id
-        st.session_state["last_score_result"] = score_result
 
     docx_path = _save_uploaded(docx) if docx is not None else None
 
@@ -88,8 +86,13 @@ if run:
         st.stop()
 
     resume_id = save_resume(resume.source, resume.raw_text)
-    job_id = save_job(job_desc, company=company or None, title=title or None, location=location or None, url=url or None)
-    st.session_state["last_job_id"] = job_id
+    job_id = save_job(
+        description=job_desc,
+        company=company,
+        title=title,
+        location=location,
+        url=url,
+    )
 
     result = None
         # Save latest texts for resume tailoring
@@ -111,8 +114,22 @@ if run:
         result = heuristic_score(resume.raw_text, job_desc, min_base_salary=int(min_base))
         model = "heuristic"
 
-    save_score(job_id, resume_id, result, model=model)
+    result = score_role(
+        resume_text=resume_text,
+        job_text=job_desc,
+        use_ai=use_ai,
+    )    
 
+    save_score(
+        job_id=job_id,
+        result=result,
+        model=("ai" if use_ai else "heuristic"),
+    )
+
+    st.session_state["last_job_id"] = job_id
+    st.session_state["last_score_result"] = result
+    st.success(f"Score: {result.get('total_score')}")
+    
     st.success("Scored and saved.")
     left, right = st.columns([1, 1])
 
