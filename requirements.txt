@@ -3,3 +3,4 @@ python-dotenv>=1.0
 python-docx>=1.1.0
 pydantic>=2.6
 openai>=1.40.0
+pdfplumber
