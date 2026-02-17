@@ -31,6 +31,18 @@ def init_db(db_path: Path = DEFAULT_DB) -> None:
         "raw_text TEXT NOT NULL)"
     )
 
+      # Lightweight migrations for new pipeline columns
+    try:
+        cur.execute("ALTER TABLE pipeline ADD COLUMN fit_score REAL")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE pipeline ADD COLUMN priority TEXT")
+    except sqlite3.OperationalError:
+        pass
+  
+
     # Job table
     cur.execute(
         "CREATE TABLE IF NOT EXISTS job ("
