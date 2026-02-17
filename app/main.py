@@ -93,7 +93,7 @@ with col_l:
     uploaded = st.file_uploader("Upload résumé (PDF/DOCX)", type=["pdf", "docx"])
     if uploaded:
         try:
-            resume = load_resume(uploaded)
+            resume = load_resume(uploaded, None)
             resume_text = getattr(resume, "raw_text", None) or getattr(resume, "text", None) or str(resume)
             resume_source = getattr(resume, "source", None) or getattr(uploaded, "name", "upload")
             st.success(f"Loaded résumé: {resume_source}")
