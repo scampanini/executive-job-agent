@@ -178,17 +178,21 @@ def create_pipeline_item(
     stage: str,
     next_action_date: Optional[str] = None,
     notes: Optional[str] = None,
+    fit_score: Optional[float] = None,
+    priority: Optional[str] = None,
     db_path: Path = DEFAULT_DB,
 ) -> int:
+
     init_db(db_path)
     conn = get_conn(db_path)
     cur = conn.cursor()
     now = int(time.time())
     cur.execute(
-        "INSERT INTO pipeline (created_at, updated_at, job_id, stage, next_action_date, notes, is_active) "
-        "VALUES (?, ?, ?, ?, ?, ?, 1)",
-        (now, now, job_id, stage, next_action_date, notes),
-    )
+    "INSERT INTO pipeline (created_at, updated_at, job_id, stage, next_action_date, notes, fit_score, priority, is_active) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)",
+    (now, now, job_id, stage, next_action_date, notes, fit_score, priority),
+)
+
     conn.commit()
     pid = int(cur.lastrowid)
     conn.close()
