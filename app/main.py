@@ -395,7 +395,11 @@ with st.expander("Add current role to pipeline", expanded=False):
             st.stop()
 
         score_data = st.session_state.get("last_score_result", {}) or {}
-fit_score = score_data.get("overall_score") or score_data.get("total_score") or score_data.get("score")
+        fit_score = (
+            score_data.get("overall_score")
+            or score_data.get("total_score")
+            or score_data.get("score")
+        )
         priority = score_data.get("priority")
 
         create_pipeline_item(
