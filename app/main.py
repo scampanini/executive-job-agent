@@ -274,22 +274,20 @@ with st.expander("Add current role to pipeline", expanded=False):
             job_id = st.session_state.get("last_job_id")
             if not job_id:
                 st.error("Missing last job reference. Score a role again, then click 'Add to pipeline'.")
-            else:
+else:
+    score_data = st.session_state.get("last_score_result", {})
+    fit_score = score_data.get("total_score")
+    priority = score_data.get("priority")
 
-score_data = st.session_state.get("last_score_result", {})
-fit_score = score_data.get("total_score")
-priority = score_data.get("priority")
-
-create_pipeline_item(
-    job_id=job_id,
-    stage=stage,
-    next_action_date=next_action or None,
-    notes=notes or None,
-    fit_score=fit_score,
-    priority=priority,
+    create_pipeline_item(
+        job_id=job_id,
+        stage=stage,
+        next_action_date=next_action or None,
+        notes=notes or None,
+        fit_score=fit_score,
+        priority=priority,
 )
-
-                st.success("Added to pipeline.")
+st.success("Added to pipeline.")
 
 st.markdown("### Active roles")
 items = list_pipeline_items(active_only=True, limit=50)
