@@ -93,7 +93,14 @@ with col_l:
     uploaded = st.file_uploader("Upload résumé (PDF/DOCX)", type=["pdf", "docx"])
     if uploaded:
         try:
-            resume = load_resume(uploaded, None)
+import tempfile
+
+suffix = ".pdf" if uploaded.type == "application/pdf" else ".docx"
+with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+    tmp.write(uploaded.getvalue())
+    tmp_path = tmp.name
+
+            resume = load_resume(tmp_path, None)
             resume_text = getattr(resume, "raw_text", None) or getattr(resume, "text", None) or str(resume)
             resume_source = getattr(resume, "source", None) or getattr(uploaded, "name", "upload")
             st.success(f"Loaded résumé: {resume_source}")
