@@ -6,8 +6,7 @@ import time
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
-# storage.py lives at: repo/app/core/storage.py
-# parents[3] -> repo root
+# storage.py is at: repo/app/core/storage.py -> parents[3] is repo root
 DEFAULT_DB = Path(__file__).resolve().parents[3] / "job_agent.sqlite3"
 
 
@@ -22,7 +21,6 @@ def init_db(db_path: Path = DEFAULT_DB) -> None:
     conn = get_conn(db_path)
     cur = conn.cursor()
 
-    # Resume table
     cur.execute(
         "CREATE TABLE IF NOT EXISTS resume ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -31,19 +29,6 @@ def init_db(db_path: Path = DEFAULT_DB) -> None:
         "raw_text TEXT NOT NULL)"
     )
 
-      # Lightweight migrations for new pipeline columns
-    try:
-        cur.execute("ALTER TABLE pipeline ADD COLUMN fit_score REAL")
-    except sqlite3.OperationalError:
-        pass
-
-    try:
-        cur.execute("ALTER TABLE pipeline ADD COLUMN priority TEXT")
-    except sqlite3.OperationalError:
-        pass
-  
-
-    # Job table
     cur.execute(
         "CREATE TABLE IF NOT EXISTS job ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -55,7 +40,6 @@ def init_db(db_path: Path = DEFAULT_DB) -> None:
         "description TEXT NOT NULL)"
     )
 
-    # Score table
     cur.execute(
         "CREATE TABLE IF NOT EXISTS score ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -68,7 +52,6 @@ def init_db(db_path: Path = DEFAULT_DB) -> None:
         "FOREIGN KEY(resume_id) REFERENCES resume(id))"
     )
 
-    # Pipeline table
     cur.execute(
         "CREATE TABLE IF NOT EXISTS pipeline ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -81,6 +64,17 @@ def init_db(db_path: Path = DEFAULT_DB) -> None:
         "is_active INTEGER NOT NULL DEFAULT 1,"
         "FOREIGN KEY(job_id) REFERENCES job(id))"
     )
+
+    # Migration-safe additions
+    try:
+        cur.execute("ALTER TABLE pipeline ADD COLUMN fit_score REAL")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE pipeline ADD COLUMN priority TEXT")
+    except sqlite3.OperationalError:
+        pass
 
     conn.commit()
     conn.close()
@@ -182,17 +176,15 @@ def create_pipeline_item(
     priority: Optional[str] = None,
     db_path: Path = DEFAULT_DB,
 ) -> int:
-
     init_db(db_path)
     conn = get_conn(db_path)
     cur = conn.cursor()
     now = int(time.time())
     cur.execute(
-    "INSERT INTO pipeline (created_at, updated_at, job_id, stage, next_action_date, notes, fit_score, priority, is_active) "
-    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)",
-    (now, now, job_id, stage, next_action_date, notes, fit_score, priority),
-)
-
+        "INSERT INTO pipeline (created_at, updated_at, job_id, stage, next_action_date, notes, fit_score, priority, is_active) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)",
+        (now, now, job_id, stage, next_action_date, notes, fit_score, priority),
+    )
     conn.commit()
     pid = int(cur.lastrowid)
     conn.close()
@@ -205,6 +197,8 @@ def update_pipeline_item(
     next_action_date: Optional[str] = None,
     notes: Optional[str] = None,
     is_active: bool = True,
+    fit_score: Optional[float] = None,
+    priority: Optional[str] = None,
     db_path: Path = DEFAULT_DB,
 ) -> None:
     init_db(db_path)
@@ -212,8 +206,8 @@ def update_pipeline_item(
     cur = conn.cursor()
     now = int(time.time())
     cur.execute(
-        "UPDATE pipeline SET updated_at=?, stage=?, next_action_date=?, notes=?, is_active=? WHERE id=?",
-        (now, stage, next_action_date, notes, 1 if is_active else 0, pipeline_id),
+        "UPDATE pipeline SET updated_at=?, stage=?, next_action_date=?, notes=?, is_active=?, fit_score=?, priority=? WHERE id=?",
+        (now, stage, next_action_date, notes, 1 if is_active else 0, fit_score, priority, pipeline_id),
     )
     conn.commit()
     conn.close()
@@ -221,7 +215,7 @@ def update_pipeline_item(
 
 def list_pipeline_items(
     active_only: bool = True,
-    limit: int = 50,
+    limit: int = 200,
     db_path: Path = DEFAULT_DB,
 ) -> List[Dict[str, Any]]:
     init_db(db_path)
@@ -231,6 +225,7 @@ def list_pipeline_items(
     where_clause = "WHERE pipeline.is_active=1" if active_only else ""
     cur.execute(
         "SELECT pipeline.id, pipeline.created_at, pipeline.updated_at, pipeline.stage, pipeline.next_action_date, pipeline.notes, "
+        "pipeline.fit_score, pipeline.priority, "
         "job.id, job.company, job.title, job.location, job.url "
         "FROM pipeline JOIN job ON job.id = pipeline.job_id "
         f"{where_clause} "
@@ -243,6 +238,7 @@ def list_pipeline_items(
     out: List[Dict[str, Any]] = []
     for (
         pipeline_id, created_at, updated_at, stage, next_action_date, notes,
+        fit_score, priority,
         job_id, company, title, location, url
     ) in rows:
         out.append(
@@ -253,6 +249,8 @@ def list_pipeline_items(
                 "stage": stage,
                 "next_action_date": next_action_date,
                 "notes": notes,
+                "fit_score": fit_score,
+                "priority": priority,
                 "job_id": job_id,
                 "company": company,
                 "title": title,
