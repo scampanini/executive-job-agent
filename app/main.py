@@ -309,7 +309,7 @@ if outreach:
 st.divider()
 
 # -------------------------
-# DASHBOARD (Active roles only)
+# DASHBOARD (Active roles only) + filters
 # -------------------------
 st.subheader("Dashboard (Active roles)")
 
@@ -318,15 +318,81 @@ items_all = list_pipeline_items(active_only=True, limit=500)
 if not items_all:
     st.info("No active pipeline roles yet. Add a scored role to the pipeline to populate the dashboard.")
 else:
-    # Metrics
-    total_active = len(items_all)
-    scores = [it.get("fit_score") for it in items_all if it.get("fit_score") is not None]
+    # --- Filters ---
+    st.markdown("### Filters")
+
+    all_stages = sorted({(it.get("stage") or "—") for it in items_all})
+    stage_filter = st.multiselect("Stage", options=all_stages, default=all_stages)
+
+    priority_options = ["HIGH", "MEDIUM", "LOW"]
+    existing_priorities = sorted({(safe_text(it.get("priority")).upper()) for it in items_all if it.get("priority")})
+    prio_choices = [p for p in priority_options if p in existing_priorities] or priority_options
+    priority_filter = st.multiselect("Priority", options=prio_choices, default=prio_choices)
+
+    overdue_only = st.checkbox("Overdue next actions only", value=False)
+    due_next_7 = st.checkbox("Next action due in next 7 days", value=False)
+
+    # Score range
+    scores_present = [float(it["fit_score"]) for it in items_all if it.get("fit_score") is not None]
+    if scores_present:
+        min_s = int(min(scores_present))
+        max_s = int(max(scores_present))
+        score_range = st.slider("Fit score range", min_value=0, max_value=100, value=(min_s, max_s))
+    else:
+        score_range = (0, 100)
+
+    # Sorting
+    sort_by = st.selectbox(
+        "Sort dashboard lists by",
+        options=["Fit score (high→low)", "Next action date (soonest)", "Last updated (newest)"],
+        index=0,
+    )
+
+    # --- Apply filters ---
+    today = date.today()
+
+    def _passes(it) -> bool:
+        stage = it.get("stage") or "—"
+        pr = safe_text(it.get("priority")).upper() if it.get("priority") else ""
+        sc = it.get("fit_score")
+        d = parse_yyyy_mm_dd(it.get("next_action_date"))
+
+        if stage_filter and stage not in stage_filter:
+            return False
+
+        # Priority filter: if item has no priority, treat as not matching
+        if priority_filter:
+            if not pr or pr not in priority_filter:
+                return False
+
+        # Score filter: if item has no score, allow it through only if range includes 0 and user accepts missing
+        if sc is not None:
+            if float(sc) < score_range[0] or float(sc) > score_range[1]:
+                return False
+
+        if overdue_only:
+            if not d or d >= today:
+                return False
+
+        if due_next_7:
+            if not d:
+                return False
+            delta = (d - today).days
+            if delta < 0 or delta > 7:
+                return False
+
+        return True
+
+    items = [it for it in items_all if _passes(it)]
+
+    # --- Metrics computed on filtered set ---
+    total_active = len(items)
+    scores = [float(it.get("fit_score")) for it in items if it.get("fit_score") is not None]
     avg_score = round(sum(scores) / len(scores), 1) if scores else None
 
     due_today = 0
     overdue = 0
-    today = date.today()
-    for it in items_all:
+    for it in items:
         d = parse_yyyy_mm_dd(it.get("next_action_date"))
         if not d:
             continue
@@ -336,63 +402,81 @@ else:
             overdue += 1
 
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Active roles", total_active)
-    m2.metric("Avg fit score", avg_score if avg_score is not None else "—")
+    m1.metric("Active roles (filtered)", total_active)
+    m2.metric("Avg fit score (filtered)", avg_score if avg_score is not None else "—")
     m3.metric("Next actions due today", due_today)
     m4.metric("Overdue next actions", overdue)
 
-    # Stage counts
-    st.markdown("### Roles by stage")
-    stage_counts: dict[str, int] = {}
-    for it in items_all:
-        stage_counts[it.get("stage", "—")] = stage_counts.get(it.get("stage", "—"), 0) + 1
-
-    # Render stage counts as a simple table
-    for stage_name, count in sorted(stage_counts.items(), key=lambda x: (-x[1], x[0])):
-        st.write(f"- **{stage_name}**: {count}")
-
-    # Avg score by stage
-    st.markdown("### Average score by stage")
-    stage_scores: dict[str, list[float]] = {}
-    for it in items_all:
-        s = it.get("fit_score")
-        if s is None:
-            continue
-        stage = it.get("stage", "—")
-        stage_scores.setdefault(stage, []).append(float(s))
-
-    if not stage_scores:
-        st.caption("No fit scores stored yet. Score a role, then add it to pipeline to snapshot the score.")
+    if not items:
+        st.warning("No roles match your current filters.")
     else:
-        for stage_name, arr in sorted(stage_scores.items(), key=lambda x: x[0]):
-            st.write(f"- **{stage_name}**: {round(sum(arr)/len(arr), 1)}")
+        # --- Sorting for lists ---
+        def _sort_key(it):
+            if sort_by == "Fit score (high→low)":
+                return (it.get("fit_score") is not None, float(it.get("fit_score") or -1))
+            if sort_by == "Next action date (soonest)":
+                d = parse_yyyy_mm_dd(it.get("next_action_date"))
+                # put missing dates at the bottom
+                return (d is not None, d or date(9999, 12, 31))
+            # Last updated (newest)
+            return int(it.get("updated_at") or 0)
 
-    # Top roles
-    st.markdown("### Top roles (by fit score)")
-    top = sorted(
-        items_all,
-        key=lambda it: (it.get("fit_score") is not None, it.get("fit_score") or -1),
-        reverse=True,
-    )[:10]
+        reverse = sort_by in ["Fit score (high→low)", "Last updated (newest)"]
+        items_sorted = sorted(items, key=_sort_key, reverse=reverse)
 
-    for it in top:
-        title_txt = safe_text(it.get("title")) or "—"
-        company_txt = safe_text(it.get("company")) or "—"
-        loc = safe_text(it.get("location"))
-        url_txt = safe_text(it.get("url"))
-        score_txt = it.get("fit_score")
-        pr = safe_text(it.get("priority"))
+        # Stage counts
+        st.markdown("### Roles by stage (filtered)")
+        stage_counts = {}
+        for it in items_sorted:
+            stage_counts[it.get("stage", "—")] = stage_counts.get(it.get("stage", "—"), 0) + 1
+        for stage_name, count in sorted(stage_counts.items(), key=lambda x: (-x[1], x[0])):
+            st.write(f"- **{stage_name}**: {count}")
 
-        line = f"**{title_txt} @ {company_txt}**"
-        if loc:
-            line += f" ({loc})"
-        st.write(line)
-        if url_txt:
-            st.write(url_txt)
-        st.write(f"Score: **{score_txt if score_txt is not None else '—'}**   |   Priority: **{pr or '—'}**   |   Stage: **{safe_text(it.get('stage'))}**")
-        if it.get("next_action_date"):
-            st.write(f"Next action: **{safe_text(it.get('next_action_date'))}**")
-        st.divider()
+        # Avg score by stage
+        st.markdown("### Average score by stage (filtered)")
+        stage_scores = {}
+        for it in items_sorted:
+            s = it.get("fit_score")
+            if s is None:
+                continue
+            stage = it.get("stage", "—")
+            stage_scores.setdefault(stage, []).append(float(s))
+        if not stage_scores:
+            st.caption("No fit scores in the filtered set.")
+        else:
+            for stage_name, arr in sorted(stage_scores.items(), key=lambda x: x[0]):
+                st.write(f"- **{stage_name}**: {round(sum(arr)/len(arr), 1)}")
+
+        # Top roles list
+        st.markdown("### Top roles (filtered)")
+        top = sorted(
+            items_sorted,
+            key=lambda it: (it.get("fit_score") is not None, float(it.get("fit_score") or -1)),
+            reverse=True,
+        )[:10]
+
+        for it in top:
+            title_txt = safe_text(it.get("title")) or "—"
+            company_txt = safe_text(it.get("company")) or "—"
+            loc = safe_text(it.get("location"))
+            url_txt = safe_text(it.get("url"))
+            score_txt = it.get("fit_score")
+            pr = safe_text(it.get("priority"))
+
+            line = f"**{title_txt} @ {company_txt}**"
+            if loc:
+                line += f" ({loc})"
+            st.write(line)
+            if url_txt:
+                st.write(url_txt)
+            st.write(
+                f"Score: **{score_txt if score_txt is not None else '—'}**   |   "
+                f"Priority: **{pr or '—'}**   |   "
+                f"Stage: **{safe_text(it.get('stage'))}**"
+            )
+            if it.get("next_action_date"):
+                st.write(f"Next action: **{safe_text(it.get('next_action_date'))}**")
+            st.divider()
 
 st.divider()
 
