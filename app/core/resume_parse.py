@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from __future__ import annotations
+from future import annotations
 from dataclasses import dataclass
 from typing import Optional
 import pathlib
