@@ -11,6 +11,7 @@ import tempfile
 from datetime import date, datetime
 
 import streamlit as st
+import matplotlib.pyplot as plt
 
 from app.core.resume_parse import load_resume
 from app.core.scoring import heuristic_score, ai_score
@@ -424,13 +425,59 @@ else:
         reverse = sort_by in ["Fit score (high→low)", "Last updated (newest)"]
         items_sorted = sorted(items, key=_sort_key, reverse=reverse)
 
-        # Stage counts
-        st.markdown("### Roles by stage (filtered)")
-        stage_counts = {}
-        for it in items_sorted:
-            stage_counts[it.get("stage", "—")] = stage_counts.get(it.get("stage", "—"), 0) + 1
-        for stage_name, count in sorted(stage_counts.items(), key=lambda x: (-x[1], x[0])):
-            st.write(f"- **{stage_name}**: {count}")
+    st.markdown("### Status overview")
+
+    # --- Stage counts ---
+    stage_counts = {}
+    for it in items_sorted:
+        stage_counts[it.get("stage", "—")] = stage_counts.get(it.get("stage", "—"), 0) + 1
+
+    # --- Priority counts ---
+    priority_counts = {"HIGH": 0, "MEDIUM": 0, "LOW": 0, "—": 0}
+    for it in items_sorted:
+        pr = safe_text(it.get("priority")).upper() if it.get("priority") else "—"
+        if pr not in priority_counts:
+            pr = "—"
+        priority_counts[pr] += 1
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        st.markdown("#### Roles by stage (donut)")
+        labels = list(stage_counts.keys())
+        sizes = list(stage_counts.values())
+
+        fig1, ax1 = plt.subplots()
+        ax1.pie(
+            sizes,
+            labels=labels,
+            autopct="%1.0f%%",
+            startangle=90,
+            wedgeprops={"width": 0.45},  # donut thickness
+        )
+        ax1.axis("equal")
+        st.pyplot(fig1)
+
+    with c2:
+        st.markdown("#### Roles by priority (donut)")
+        pr_labels = [k for k, v in priority_counts.items() if v > 0]
+        pr_sizes = [priority_counts[k] for k in pr_labels]
+
+        fig2, ax2 = plt.subplots()
+        ax2.pie(
+            pr_sizes,
+            labels=pr_labels,
+            autopct="%1.0f%%",
+            startangle=90,
+            wedgeprops={"width": 0.45},
+        )
+        ax2.axis("equal")
+        st.pyplot(fig2)
+
+    st.markdown("#### Stage totals (filtered)")
+    for stage_name, count in sorted(stage_counts.items(), key=lambda x: (-x[1], x[0])):
+        st.write(f"- **{stage_name}**: {count}")
+
 
         # Avg score by stage
         st.markdown("### Average score by stage (filtered)")
@@ -497,6 +544,16 @@ PIPELINE_STAGES = [
     "Rejected",
     "Withdrawn",
 ]
+
+QUICK_STAGE_BUTTONS = [
+    "Interested",
+    "Applied",
+    "Recruiter screen",
+    "Hiring manager screen",
+    "Interview loop",
+    "Offer",
+]
+
 
 with st.expander("Add current role to pipeline", expanded=False):
     st.caption("Tip: Score a role first so company/title are captured, then add it to your pipeline.")
@@ -584,6 +641,25 @@ else:
         st.markdown(f"**{header}**")
         if url_txt:
             st.write(url_txt)
+        # One-click stage buttons
+        cols = st.columns(len(QUICK_STAGE_BUTTONS))
+        for idx, target_stage in enumerate(QUICK_STAGE_BUTTONS):
+            if cols[idx].button(
+                target_stage,
+                key=f"quick_{it['pipeline_id']}_{target_stage}",
+                use_container_width=True,
+            ):
+                update_pipeline_item(
+                    pipeline_id=it["pipeline_id"],
+                    stage=target_stage,
+                    next_action_date=it.get("next_action_date"),
+                    notes=it.get("notes"),
+                    is_active=True,
+                    fit_score=it.get("fit_score"),
+                    priority=it.get("priority"),
+                )
+                st.success(f"Stage updated to: {target_stage}")
+                st.rerun()
 
         st.write(f"Stage: **{safe_text(it.get('stage'))}**")
         if it.get("fit_score") is not None:
