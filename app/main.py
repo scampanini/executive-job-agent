@@ -1,9 +1,12 @@
 import sys
 from pathlib import Path
-
+import os
+import tempfile
+from datetime import datetime, date
 import sqlite3
 import pandas as pd
 import streamlit as st
+from collections import Counter
 
 # Headless-safe matplotlib for Render (must be before pyplot)
 import matplotlib
@@ -232,6 +235,8 @@ if tailor:
         with st.spinner("Generating tailored résumé..."):
             tailored = tailor_resume_ai(resume_text_last, job_text_last)
 
+        st.session_state["last_tailored"] = tailored
+
         if not tailored:
             st.error("AI tailoring not available. Confirm OPENAI_API_KEY is set in Render Environment.")
         else:
@@ -270,17 +275,20 @@ if brief:
     else:
         with st.spinner("Generating positioning brief..."):
             memo = generate_positioning_brief(resume_text_last, job_text_last)
+        st.session_state["last_positioning_brief"] = memo
 
-        if memo:
-            st.text_area("Positioning brief", value=memo, height=460)
-            st.download_button(
-                "Download positioning brief (TXT)",
-                data=memo.encode("utf-8"),
-                file_name="positioning_brief.txt",
-                mime="text/plain",
-            )
+memo = st.session_state.get("last_positioning_brief")
+if memo:
+    st.text_area("Positioning brief", value=memo, height=460)
+    st.download_button(
+        "Download positioning brief (TXT)",
+        data=memo.encode("utf-8"),
+        file_name="positioning_brief.txt",
+        mime="text/plain",
+    )
 
 st.divider()
+
 
 # -------------------------
 # Recruiter Outreach Kit
@@ -297,43 +305,43 @@ if outreach:
     else:
         with st.spinner("Generating outreach kit..."):
             kit = generate_recruiter_outreach(resume_text_last, job_text_last)
+        st.session_state["last_outreach_kit"] = kit
 
-        if not kit:
-            st.error("Outreach kit is not available. Confirm OPENAI_API_KEY is set in Render Environment.")
-        else:
-            st.success("Outreach kit generated.")
-            email_text = safe_text(kit.get("email"))
-            li_text = safe_text(kit.get("linkedin"))
-            call_text = safe_text(kit.get("call_talking_points"))
+kit = st.session_state.get("last_outreach_kit")
+if not kit:
+    st.caption("Generate an outreach kit to see email + LinkedIn + talking points here.")
+elif isinstance(kit, dict) and kit.get("error"):
+    st.error(safe_text(kit.get("error")))
+else:
+    st.success("Outreach kit generated.")
+    email_text = safe_text(kit.get("email"))
+    li_text = safe_text(kit.get("linkedin"))
+    call_text = safe_text(kit.get("call_talking_points"))
 
-            st.markdown("### Recruiter email")
-            st.text_area("Email", value=email_text, height=200)
+    st.markdown("### Recruiter email")
+    st.text_area("Email", value=email_text, height=200, key="outreach_email")
 
-            st.markdown("### LinkedIn message")
-            st.text_area("LinkedIn", value=li_text, height=120)
+    st.markdown("### LinkedIn message")
+    st.text_area("LinkedIn", value=li_text, height=120, key="outreach_li")
 
-            st.markdown("### First-call talking points")
-            st.text_area("Call talking points", value=call_text, height=180)
+    st.markdown("### First-call talking points")
+    st.text_area("Call talking points", value=call_text, height=180, key="outreach_call")
 
-            bundle = (
-                "RECRUITER EMAIL\n\n" + email_text
-                + "\n\nLINKEDIN MESSAGE\n\n" + li_text
-                + "\n\nFIRST-CALL TALKING POINTS\n\n" + call_text
-            )
+    bundle = (
+        "RECRUITER EMAIL\n\n" + email_text
+        + "\n\nLINKEDIN MESSAGE\n\n" + li_text
+        + "\n\nFIRST-CALL TALKING POINTS\n\n" + call_text
+    )
 
-            st.download_button(
-                "Download outreach kit (TXT)",
-                data=bundle.encode("utf-8"),
-                file_name="recruiter_outreach_kit.txt",
-                mime="text/plain",
-            )
+    st.download_button(
+        "Download outreach kit (TXT)",
+        data=bundle.encode("utf-8"),
+        file_name="recruiter_outreach_kit.txt",
+        mime="text/plain",
+    )
 
 st.divider()
 
-# -------------------------
-# DASHBOARD (Active roles only) + filters
-# -------------------------
-st.subheader("Dashboard (Active roles)")
 
 # -------------------------
 # DASHBOARD (Active roles only) + filters
@@ -343,215 +351,17 @@ st.subheader("Dashboard (Active roles)")
 items_all = list_pipeline_items(active_only=True, limit=500)
 
 # Donut: compute from items_all to avoid a second DB read
-from collections import Counter
-stage_counts = Counter((it.get("stage") or "—") for it in items_all)
-
-labels = tuple(stage_counts.keys())
-values = tuple(stage_counts.values())
-fig = make_donut_figure(labels, values, "Pipeline by Stage")
-st.pyplot(fig, clear_figure=True)
-
-
-stage_counts = jobs_df["stage"].value_counts().to_dict()  # change "stage" if your column differs
-labels = tuple(stage_counts.keys())
-values = tuple(stage_counts.values())
-
-fig = make_donut_figure(labels, values, "Pipeline by Stage")
-st.pyplot(fig, clear_figure=True)
 
 if not items_all:
     st.info("No active pipeline roles yet. Add a scored role to the pipeline to populate the dashboard.")
 else:
-    # --- Filters ---
-    st.markdown("### Filters")
+    stage_counts = Counter((it.get("stage") or "—") for it in items_all)
 
-    all_stages = sorted({(it.get("stage") or "—") for it in items_all})
-    stage_filter = st.multiselect("Stage", options=all_stages, default=all_stages, key="dash_stage")
-    priority_filter = st.multiselect("Priority", options=prio_choices, default=prio_choices, key="dash_priority")
-    overdue_only = st.checkbox("Overdue next actions only", value=False, key="dash_overdue")
-    due_next_7 = st.checkbox("Next action due in next 7 days", value=False, key="dash_due7")
-
-    priority_options = ["HIGH", "MEDIUM", "LOW"]
-    existing_priorities = sorted({(safe_text(it.get("priority")).upper()) for it in items_all if it.get("priority")})
-    prio_choices = [p for p in priority_options if p in existing_priorities] or priority_options
-    priority_filter = st.multiselect("Priority", options=prio_choices, default=prio_choices)
-
-    overdue_only = st.checkbox("Overdue next actions only", value=False)
-    due_next_7 = st.checkbox("Next action due in next 7 days", value=False)
-
-    # Score range
-    scores_present = [float(it["fit_score"]) for it in items_all if it.get("fit_score") is not None]
-    if scores_present:
-        min_s = int(min(scores_present))
-        max_s = int(max(scores_present))
-        score_range = st.slider("Fit score range", min_value=0, max_value=100, value=(min_s, max_s))
-    else:
-        score_range = (0, 100)
-
-    # Sorting
-    sort_by = st.selectbox(
-        "Sort dashboard lists by",
-        options=["Fit score (high→low)", "Next action date (soonest)", "Last updated (newest)"],
-        index=0,
-    )
-
-    # --- Apply filters ---
-    today = date.today()
-
-    def _passes(it) -> bool:
-        stage = it.get("stage") or "—"
-        pr = safe_text(it.get("priority")).upper() if it.get("priority") else ""
-        sc = it.get("fit_score")
-        d = parse_yyyy_mm_dd(it.get("next_action_date"))
-
-        if stage_filter and stage not in stage_filter:
-            return False
-
-        # Priority filter: if item has no priority, treat as not matching
-        if priority_filter:
-            if not pr or pr not in priority_filter:
-                return False
-
-        # Score filter: if item has no score, allow it through only if range includes 0 and user accepts missing
-        if sc is not None:
-            if float(sc) < score_range[0] or float(sc) > score_range[1]:
-                return False
-
-        if overdue_only:
-            if not d or d >= today:
-                return False
-
-        if due_next_7:
-            if not d:
-                return False
-            delta = (d - today).days
-            if delta < 0 or delta > 7:
-                return False
-
-        return True
-
-    items = [it for it in items_all if _passes(it)]
-
-    # --- Metrics computed on filtered set ---
-    total_active = len(items)
-    scores = [float(it.get("fit_score")) for it in items if it.get("fit_score") is not None]
-    avg_score = round(sum(scores) / len(scores), 1) if scores else None
-
-    due_today = 0
-    overdue = 0
-    for it in items:
-        d = parse_yyyy_mm_dd(it.get("next_action_date"))
-        if not d:
-            continue
-        if d == today:
-            due_today += 1
-        elif d < today:
-            overdue += 1
-
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Active roles (filtered)", total_active)
-    m2.metric("Avg fit score (filtered)", avg_score if avg_score is not None else "—")
-    m3.metric("Next actions due today", due_today)
-    m4.metric("Overdue next actions", overdue)
-
-    if not items:
-        st.warning("No roles match your current filters.")
-    else:
-        # --- Sorting for lists ---
-        def _sort_key(it):
-            if sort_by == "Fit score (high→low)":
-                return (it.get("fit_score") is not None, float(it.get("fit_score") or -1))
-            if sort_by == "Next action date (soonest)":
-                d = parse_yyyy_mm_dd(it.get("next_action_date"))
-                # put missing dates at the bottom
-                return (d is not None, d or date(9999, 12, 31))
-            # Last updated (newest)
-            return int(it.get("updated_at") or 0)
-
-        reverse = sort_by in ["Fit score (high→low)", "Last updated (newest)"]
-        items_sorted = sorted(items, key=_sort_key, reverse=reverse)
-
-    st.markdown("### Status overview")
-
-    # --- Stage counts ---
-    stage_counts = {}
-    for it in items_sorted:
-        stage_counts[it.get("stage", "—")] = stage_counts.get(it.get("stage", "—"), 0) + 1
-
-    # --- Priority counts ---
-    priority_counts = {"HIGH": 0, "MEDIUM": 0, "LOW": 0, "—": 0}
-    for it in items_sorted:
-        pr = safe_text(it.get("priority")).upper() if it.get("priority") else "—"
-        if pr not in priority_counts:
-            pr = "—"
-        priority_counts[pr] += 1
-
-    c1, c2 = st.columns(2)
-
-    with c1:
-    st.markdown("#### Roles by stage (donut)")
     labels = tuple(stage_counts.keys())
     values = tuple(stage_counts.values())
-    fig1 = make_donut_figure(labels, values, "Roles by stage")
-    st.pyplot(fig1, clear_figure=True)
 
-    with c2:
-    st.markdown("#### Roles by priority (donut)")
-    pr_labels = [k for k, v in priority_counts.items() if v > 0]
-    pr_sizes = [priority_counts[k] for k in pr_labels]
-    fig2 = make_donut_figure(tuple(pr_labels), tuple(pr_sizes), "Roles by priority")
-    st.pyplot(fig2, clear_figure=True)
-
-    st.markdown("#### Stage totals (filtered)")
-    for stage_name, count in sorted(stage_counts.items(), key=lambda x: (-x[1], x[0])):
-        st.write(f"- **{stage_name}**: {count}")
-
-
-        # Avg score by stage
-        st.markdown("### Average score by stage (filtered)")
-        stage_scores = {}
-        for it in items_sorted:
-            s = it.get("fit_score")
-            if s is None:
-                continue
-            stage = it.get("stage", "—")
-            stage_scores.setdefault(stage, []).append(float(s))
-        if not stage_scores:
-            st.caption("No fit scores in the filtered set.")
-        else:
-            for stage_name, arr in sorted(stage_scores.items(), key=lambda x: x[0]):
-                st.write(f"- **{stage_name}**: {round(sum(arr)/len(arr), 1)}")
-
-        # Top roles list
-        st.markdown("### Top roles (filtered)")
-        top = sorted(
-            items_sorted,
-            key=lambda it: (it.get("fit_score") is not None, float(it.get("fit_score") or -1)),
-            reverse=True,
-        )[:10]
-
-        for it in top:
-            title_txt = safe_text(it.get("title")) or "—"
-            company_txt = safe_text(it.get("company")) or "—"
-            loc = safe_text(it.get("location"))
-            url_txt = safe_text(it.get("url"))
-            score_txt = it.get("fit_score")
-            pr = safe_text(it.get("priority"))
-
-            line = f"**{title_txt} @ {company_txt}**"
-            if loc:
-                line += f" ({loc})"
-            st.write(line)
-            if url_txt:
-                st.write(url_txt)
-            st.write(
-                f"Score: **{score_txt if score_txt is not None else '—'}**   |   "
-                f"Priority: **{pr or '—'}**   |   "
-                f"Stage: **{safe_text(it.get('stage'))}**"
-            )
-            if it.get("next_action_date"):
-                st.write(f"Next action: **{safe_text(it.get('next_action_date'))}**")
-            st.divider()
+    fig = make_donut_figure(labels, values, "Pipeline by Stage")
+    st.pyplot(fig, clear_figure=True)
 
 st.divider()
 
@@ -559,6 +369,7 @@ st.divider()
 # Pipeline Tracker
 # -------------------------
 st.subheader("Pipeline Tracker")
+
 
 PIPELINE_STAGES = [
     "Interested",
@@ -582,13 +393,12 @@ QUICK_STAGE_BUTTONS = [
     "Offer",
 ]
 
-
 with st.expander("Add current role to pipeline", expanded=False):
     st.caption("Tip: Score a role first so company/title are captured, then add it to your pipeline.")
-    stage = st.selectbox("Stage", PIPELINE_STAGES, index=0)
-    next_action = st.text_input("Next action date (YYYY-MM-DD)", value="")
-    notes = st.text_area("Notes", height=120)
-    add_to_pipeline = st.button("Add to pipeline")
+    stage = st.selectbox("Stage", PIPELINE_STAGES, index=0, key="add_stage")
+    next_action = st.text_input("Next action date (YYYY-MM-DD)", value="", key="add_next")
+    notes = st.text_area("Notes", height=120, key="add_notes")
+    add_to_pipeline = st.button("Add to pipeline", key="add_btn")
 
     if add_to_pipeline:
         job_id = st.session_state.get("last_job_id")
@@ -613,31 +423,37 @@ with st.expander("Add current role to pipeline", expanded=False):
             priority=priority,
         )
         st.cache_data.clear()
-        st.success("Added to pipeline.")
+        st.toast("Added to pipeline")
+        st.rerun()
 
 st.markdown("### Active roles")
 
-items = list_pipeline_items(active_only=True, limit=500)
+items = items_all
 
 st.markdown("#### Pipeline filters")
 pipeline_stage_filter = st.multiselect(
     "Filter stages",
     options=PIPELINE_STAGES,
     default=PIPELINE_STAGES,
+    key="pipe_stage_filter",
 )
 
 pipeline_sort = st.selectbox(
     "Sort pipeline by",
     options=["Last updated (newest)", "Fit score (high→low)", "Next action date (soonest)"],
     index=0,
+    key="pipe_sort",
 )
 
-pipeline_overdue_only = st.checkbox("Show only overdue next actions", value=False)
+pipeline_overdue_only = st.checkbox("Show only overdue next actions", value=False, key="pipe_overdue_only")
 
 today = date.today()
 
 def _pipeline_pass(it) -> bool:
-    if pipeline_stage_filter and it.get("stage") not in pipeline_stage_filter:
+stage = it.get("stage") or "—"
+if pipeline_stage_filter and stage not in pipeline_stage_filter:
+    return False
+
         return False
     if pipeline_overdue_only:
         d = parse_yyyy_mm_dd(it.get("next_action_date"))
@@ -652,7 +468,12 @@ def _pipeline_sort_key(it):
     if pipeline_sort == "Next action date (soonest)":
         d = parse_yyyy_mm_dd(it.get("next_action_date"))
         return (d is not None, d or date(9999, 12, 31))
-    return int(it.get("updated_at") or 0)
+val = it.get("updated_at")
+try:
+    return int(val)
+except Exception:
+    return 0
+
 
 reverse = pipeline_sort in ["Last updated (newest)", "Fit score (high→low)"]
 items = sorted(items, key=_pipeline_sort_key, reverse=reverse)
@@ -670,6 +491,7 @@ else:
         st.markdown(f"**{header}**")
         if url_txt:
             st.write(url_txt)
+
         # One-click stage buttons
         cols = st.columns(len(QUICK_STAGE_BUTTONS))
         for idx, target_stage in enumerate(QUICK_STAGE_BUTTONS):
@@ -678,22 +500,25 @@ else:
                 key=f"quick_{it['pipeline_id']}_{target_stage}",
                 use_container_width=True,
             ):
-update_pipeline_item(
-    pipeline_id=it["pipeline_id"],
-    stage=target_stage,
-    next_action_date=it.get("next_action_date"),
-    notes=it.get("notes"),
-    is_active=True,
-    fit_score=it.get("fit_score"),
-    priority=it.get("priority"),
-)
-st.cache_data.clear()
-st.success(f"Stage updated to: {target_stage}")
-st.rerun()
+                update_pipeline_item(
+                    pipeline_id=it["pipeline_id"],
+                    stage=target_stage,
+                    next_action_date=it.get("next_action_date"),
+                    notes=it.get("notes"),
+                    is_active=True,
+                    fit_score=it.get("fit_score"),
+                    priority=it.get("priority"),
+                )
+                st.cache_data.clear()
+                st.toast(f"Stage updated: {target_stage}")
+                st.rerun()
 
         st.write(f"Stage: **{safe_text(it.get('stage'))}**")
         if it.get("fit_score") is not None:
-            st.write(f"Fit score: **{it.get('fit_score')}**   |   Priority: **{safe_text(it.get('priority')) or '—'}**")
+            st.write(
+                f"Fit score: **{it.get('fit_score')}**   |   "
+                f"Priority: **{safe_text(it.get('priority')) or '—'}**"
+            )
         if it.get("next_action_date"):
             st.write(f"Next action: **{safe_text(it.get('next_action_date'))}**")
         if it.get("notes"):
@@ -730,12 +555,11 @@ st.rerun()
                     priority=it.get("priority"),
                 )
                 st.cache_data.clear()
-                st.success(f"Stage updated to: {target_stage}")
+                st.toast("Updated")
                 st.rerun()
 
         st.divider()
 
-st.divider()
 st.subheader("Recent scored roles")
 recent = list_recent_scores(limit=10)
 if not recent:
