@@ -7,10 +7,6 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-# TEMP: diagnostics (remove after this is stable)
-print("PYTHON:", sys.version)
-print("MATPLOTLIB SPEC:", importlib.util.find_spec("matplotlib"))
-
 # Ensure repo root is on the Python path so `import app...` works in Streamlit/Render
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
