@@ -1,11 +1,33 @@
 import sys
 from pathlib import Path
-import importlib.util
 
-# Headless-safe matplotlib for Render
+import sqlite3
+import pandas as pd
+import streamlit as st
+
+# Headless-safe matplotlib for Render (must be before pyplot)
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+
+@st.cache_data(ttl=15)
+def load_jobs_df(db_path: str, active_only: bool = True) -> pd.DataFrame:
+    q = "SELECT * FROM jobs"
+    if active_only:
+        q += " WHERE active = 1"
+    with sqlite3.connect(db_path) as conn:
+        return pd.read_sql_query(q, conn)
+
+
+@st.cache_data
+def make_donut_figure(labels: tuple, values: tuple, title: str):
+    fig, ax = plt.subplots()
+    ax.pie(values, labels=labels, wedgeprops={"width": 0.4})
+    ax.set_title(title)
+    return fig
+
+
 
 # Ensure repo root is on the Python path so `import app...` works in Streamlit/Render
 ROOT = Path(__file__).resolve().parents[1]
@@ -313,7 +335,29 @@ st.divider()
 # -------------------------
 st.subheader("Dashboard (Active roles)")
 
+# -------------------------
+# DASHBOARD (Active roles only) + filters
+# -------------------------
+st.subheader("Dashboard (Active roles)")
+
 items_all = list_pipeline_items(active_only=True, limit=500)
+
+# Donut: compute from items_all to avoid a second DB read
+from collections import Counter
+stage_counts = Counter((it.get("stage") or "—") for it in items_all)
+
+labels = tuple(stage_counts.keys())
+values = tuple(stage_counts.values())
+fig = make_donut_figure(labels, values, "Pipeline by Stage")
+st.pyplot(fig, clear_figure=True)
+
+
+stage_counts = jobs_df["stage"].value_counts().to_dict()  # change "stage" if your column differs
+labels = tuple(stage_counts.keys())
+values = tuple(stage_counts.values())
+
+fig = make_donut_figure(labels, values, "Pipeline by Stage")
+st.pyplot(fig, clear_figure=True)
 
 if not items_all:
     st.info("No active pipeline roles yet. Add a scored role to the pipeline to populate the dashboard.")
@@ -322,7 +366,10 @@ else:
     st.markdown("### Filters")
 
     all_stages = sorted({(it.get("stage") or "—") for it in items_all})
-    stage_filter = st.multiselect("Stage", options=all_stages, default=all_stages)
+    stage_filter = st.multiselect("Stage", options=all_stages, default=all_stages, key="dash_stage")
+    priority_filter = st.multiselect("Priority", options=prio_choices, default=prio_choices, key="dash_priority")
+    overdue_only = st.checkbox("Overdue next actions only", value=False, key="dash_overdue")
+    due_next_7 = st.checkbox("Next action due in next 7 days", value=False, key="dash_due7")
 
     priority_options = ["HIGH", "MEDIUM", "LOW"]
     existing_priorities = sorted({(safe_text(it.get("priority")).upper()) for it in items_all if it.get("priority")})
@@ -442,36 +489,18 @@ else:
     c1, c2 = st.columns(2)
 
     with c1:
-        st.markdown("#### Roles by stage (donut)")
-        labels = list(stage_counts.keys())
-        sizes = list(stage_counts.values())
-
-        fig1, ax1 = plt.subplots()
-        ax1.pie(
-            sizes,
-            labels=labels,
-            autopct="%1.0f%%",
-            startangle=90,
-            wedgeprops={"width": 0.45},  # donut thickness
-        )
-        ax1.axis("equal")
-        st.pyplot(fig1)
+    st.markdown("#### Roles by stage (donut)")
+    labels = tuple(stage_counts.keys())
+    values = tuple(stage_counts.values())
+    fig1 = make_donut_figure(labels, values, "Roles by stage")
+    st.pyplot(fig1, clear_figure=True)
 
     with c2:
-        st.markdown("#### Roles by priority (donut)")
-        pr_labels = [k for k, v in priority_counts.items() if v > 0]
-        pr_sizes = [priority_counts[k] for k in pr_labels]
-
-        fig2, ax2 = plt.subplots()
-        ax2.pie(
-            pr_sizes,
-            labels=pr_labels,
-            autopct="%1.0f%%",
-            startangle=90,
-            wedgeprops={"width": 0.45},
-        )
-        ax2.axis("equal")
-        st.pyplot(fig2)
+    st.markdown("#### Roles by priority (donut)")
+    pr_labels = [k for k, v in priority_counts.items() if v > 0]
+    pr_sizes = [priority_counts[k] for k in pr_labels]
+    fig2 = make_donut_figure(tuple(pr_labels), tuple(pr_sizes), "Roles by priority")
+    st.pyplot(fig2, clear_figure=True)
 
     st.markdown("#### Stage totals (filtered)")
     for stage_name, count in sorted(stage_counts.items(), key=lambda x: (-x[1], x[0])):
@@ -583,6 +612,7 @@ with st.expander("Add current role to pipeline", expanded=False):
             fit_score=fit_score,
             priority=priority,
         )
+        st.cache_data.clear()
         st.success("Added to pipeline.")
 
 st.markdown("### Active roles")
@@ -648,17 +678,18 @@ else:
                 key=f"quick_{it['pipeline_id']}_{target_stage}",
                 use_container_width=True,
             ):
-                update_pipeline_item(
-                    pipeline_id=it["pipeline_id"],
-                    stage=target_stage,
-                    next_action_date=it.get("next_action_date"),
-                    notes=it.get("notes"),
-                    is_active=True,
-                    fit_score=it.get("fit_score"),
-                    priority=it.get("priority"),
-                )
-                st.success(f"Stage updated to: {target_stage}")
-                st.rerun()
+update_pipeline_item(
+    pipeline_id=it["pipeline_id"],
+    stage=target_stage,
+    next_action_date=it.get("next_action_date"),
+    notes=it.get("notes"),
+    is_active=True,
+    fit_score=it.get("fit_score"),
+    priority=it.get("priority"),
+)
+st.cache_data.clear()
+st.success(f"Stage updated to: {target_stage}")
+st.rerun()
 
         st.write(f"Stage: **{safe_text(it.get('stage'))}**")
         if it.get("fit_score") is not None:
@@ -698,7 +729,8 @@ else:
                     fit_score=it.get("fit_score"),
                     priority=it.get("priority"),
                 )
-                st.success("Updated. Refreshing list...")
+                st.cache_data.clear()
+                st.success(f"Stage updated to: {target_stage}")
                 st.rerun()
 
         st.divider()
