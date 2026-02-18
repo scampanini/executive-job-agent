@@ -1,23 +1,20 @@
 import sys
+from pathlib import Path
 import importlib.util
+
+# Headless-safe matplotlib for Render
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+# TEMP: diagnostics (remove after this is stable)
 print("PYTHON:", sys.version)
 print("MATPLOTLIB SPEC:", importlib.util.find_spec("matplotlib"))
-import sys
-from pathlib import Path
 
 # Ensure repo root is on the Python path so `import app...` works in Streamlit/Render
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-import os
-import tempfile
-from datetime import date, datetime
-
-import streamlit as st
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 
 from app.core.resume_parse import load_resume
 from app.core.scoring import heuristic_score, ai_score
