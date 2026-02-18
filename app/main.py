@@ -487,8 +487,13 @@ if not items:
     st.info("No active pipeline items yet.")
 else:
     for it in items:
+        pid = it.get("pipeline_id")
+        if pid is None:
+            continue
+
         title_txt = safe_text(it.get("title")) or "—"
         company_txt = safe_text(it.get("company")) or "—"
+
         loc = safe_text(it.get("location"))
         url_txt = safe_text(it.get("url"))
 
@@ -502,11 +507,11 @@ else:
         for idx, target_stage in enumerate(QUICK_STAGE_BUTTONS):
             if cols[idx].button(
                 target_stage,
-                key=f"quick_{it['pipeline_id']}_{target_stage}",
+                key=f"quick_{pid}_{target_stage}",
                 use_container_width=True,
             ):
                 update_pipeline_item(
-                    pipeline_id=it["pipeline_id"],
+                    pipeline_id=pid,
                     stage=target_stage,
                     next_action_date=it.get("next_action_date"),
                     notes=it.get("notes"),
@@ -534,7 +539,7 @@ else:
                 "New stage",
                 PIPELINE_STAGES,
                 index=PIPELINE_STAGES.index(it["stage"]) if it.get("stage") in PIPELINE_STAGES else 0,
-                key=f"stage_{it['pipeline_id']}",
+                key=f"stage_{pid}",
             )
             new_next = st.text_input(
                 "Next action date (YYYY-MM-DD)",
@@ -551,7 +556,7 @@ else:
 
             if st.button("Save update", key=f"save_{it['pipeline_id']}"):
                 update_pipeline_item(
-                    pipeline_id=it["pipeline_id"],
+                    pipeline_id=pid,
                     stage=new_stage,
                     next_action_date=new_next or None,
                     notes=new_notes or None,
