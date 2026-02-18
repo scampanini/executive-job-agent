@@ -1,4 +1,8 @@
 import sys
+import importlib.util
+print("PYTHON:", sys.version)
+print("MATPLOTLIB SPEC:", importlib.util.find_spec("matplotlib"))
+import sys
 from pathlib import Path
 
 # Ensure repo root is on the Python path so `import app...` works in Streamlit/Render
@@ -11,6 +15,8 @@ import tempfile
 from datetime import date, datetime
 
 import streamlit as st
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from app.core.resume_parse import load_resume
