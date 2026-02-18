@@ -1,13 +1,15 @@
-# app/main.py
 import sys
 from pathlib import Path
 
 # Ensure repo root is on the Python path so `import app...` works in Streamlit/Render
-ROOT = Path(__file__).resolve().parents[1]  # repo root
+ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import os
+import tempfile
+from datetime import date, datetime
+
 import streamlit as st
 
 from app.core.resume_parse import load_resume
@@ -26,16 +28,13 @@ from app.core.storage import (
     list_pipeline_items,
 )
 
-# -------------------------
-# Helpers
-# -------------------------
+
+def safe_text(x) -> str:
+    return "" if x is None else str(x)
+
 
 def _call_scorer(fn, resume_text: str, job_text: str, min_base: int):
-    """
-    Calls the scorer function with a few possible signatures to be resilient
-    to small changes in scoring.py.
-    """
-    # Most likely signatures (try in order)
+    # Try a few possible signatures to stay compatible with your scoring.py
     for args, kwargs in [
         ((resume_text, job_text), {"min_base": min_base}),
         ((resume_text, job_text), {"min_salary": min_base}),
@@ -46,7 +45,6 @@ def _call_scorer(fn, resume_text: str, job_text: str, min_base: int):
             return fn(*args, **kwargs)
         except TypeError:
             continue
-    # If we got here, raise the last TypeError by calling plainly
     return fn(resume_text, job_text)
 
 
@@ -55,7 +53,6 @@ def score_role(resume_text: str, job_text: str, use_ai: bool, min_base: int):
         try:
             return _call_scorer(ai_score, resume_text, job_text, min_base), "openai"
         except Exception as e:
-            # Fall back to heuristic
             return {
                 "error": f"AI scoring failed; falling back to heuristic scoring. Details: {e}",
                 **_call_scorer(heuristic_score, resume_text, job_text, min_base),
@@ -63,13 +60,15 @@ def score_role(resume_text: str, job_text: str, use_ai: bool, min_base: int):
     return _call_scorer(heuristic_score, resume_text, job_text, min_base), "heuristic"
 
 
-def safe_text(x) -> str:
-    return "" if x is None else str(x)
+def parse_yyyy_mm_dd(s: str):
+    s = (s or "").strip()
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except Exception:
+        return None
 
-
-# -------------------------
-# App
-# -------------------------
 
 st.set_page_config(page_title="Executive Job Agent (Personal)", layout="wide")
 init_db()
@@ -86,6 +85,7 @@ with st.sidebar:
     st.write("OPENAI_API_KEY set:", bool(os.getenv("OPENAI_API_KEY")))
     st.write("OPENAI_MODEL:", os.getenv("OPENAI_MODEL", "(not set)"))
 
+
 col_l, col_r = st.columns(2)
 
 with col_l:
@@ -96,23 +96,20 @@ with col_l:
     resume_source = ""
 
     if uploaded:
-        import tempfile
-
         suffix = ".pdf" if uploaded.type == "application/pdf" else ".docx"
-        tmp_path = None
-
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(uploaded.getvalue())
             tmp_path = tmp.name
 
         try:
+            # load_resume expects (file_path, pasted_text)
             resume = load_resume(tmp_path, None)
             resume_text = (
                 getattr(resume, "raw_text", None)
                 or getattr(resume, "text", None)
                 or str(resume)
             )
-            resume_source = getattr(resume, "source", None) or uploaded.name
+            resume_source = uploaded.name
             st.success(f"Loaded résumé: {resume_source}")
         except Exception as e:
             st.error(f"Could not parse résumé: {e}")
@@ -125,7 +122,6 @@ with col_r:
     title = st.text_input("Title (optional)", value="")
     location = st.text_input("Location (optional)", value="")
     url = st.text_input("Job URL (optional)", value="")
-
     job_desc = st.text_area("Job description", height=320)
 
 run = st.button("Score this role", type="primary")
@@ -138,7 +134,6 @@ if run:
         st.error("Please paste a job description.")
         st.stop()
 
-    # Save resume + job
     resume_id = save_resume(source=resume_source or "upload", raw_text=resume_text)
     job_id = save_job(
         description=job_desc,
@@ -148,13 +143,10 @@ if run:
         url=url or None,
     )
 
-    # Score
     result, model_used = score_role(resume_text, job_desc, use_ai=use_ai, min_base=min_base)
-
-    # Persist score
     save_score(job_id=job_id, resume_id=resume_id, result=result, model=model_used)
 
-    # Session state for downstream tools (pipeline, tailoring, brief, outreach)
+    # Session state for downstream tools
     st.session_state["last_resume_text"] = resume_text
     st.session_state["last_job_text"] = job_desc
     st.session_state["last_company"] = company or ""
@@ -162,7 +154,7 @@ if run:
     st.session_state["last_job_id"] = job_id
     st.session_state["last_score_result"] = result
 
-    # Display
+    # Readable output
     if isinstance(result, dict) and result.get("error"):
         st.warning(result["error"])
 
@@ -178,10 +170,10 @@ if run:
         if priority:
             st.write(f"Priority: **{priority}**")
 
-        def _render_list(title: str, key: str):
+        def _render_list(title_txt: str, key: str):
             items = result.get(key) or []
             if items:
-                st.subheader(title)
+                st.subheader(title_txt)
                 for x in items:
                     st.write(f"- {x}")
 
@@ -195,27 +187,10 @@ if run:
             st.subheader("Two-line pitch")
             st.write(pitch)
 
-        # Optional: keep any dimensions if your scorer returns them
-        dims = result.get("dimensions")
-        if dims:
-            st.subheader("Dimensions (debug)")
-            st.json(dims)
-
         with st.expander("Full scoring output (debug)", expanded=False):
             st.json(result)
 
     st.info(f"Scoring mode used: {model_used}")
-
-
-    if isinstance(result, dict):
-        dims = result.get("dimensions")
-        if dims:
-            st.subheader("Dimensions")
-            st.json(dims)
-
-        # Show the whole result for transparency
-        with st.expander("Full scoring output", expanded=False):
-            st.json(result)
 
 st.divider()
 
@@ -223,7 +198,6 @@ st.divider()
 # Tailored résumé
 # -------------------------
 st.subheader("Tailored résumé (AI)")
-
 tailor = st.button("Generate tailored résumé")
 
 if tailor:
@@ -240,7 +214,6 @@ if tailor:
             st.error("AI tailoring not available. Confirm OPENAI_API_KEY is set in Render Environment.")
         else:
             st.success("Tailored résumé generated.")
-
             st.markdown("**Tailored headline**")
             st.write(safe_text(tailored.get("tailored_headline")))
 
@@ -248,28 +221,7 @@ if tailor:
             for b in (tailored.get("tailored_summary") or []):
                 st.write(f"- {b}")
 
-            st.markdown("**Core competencies**")
-            comps = tailored.get("core_competencies") or []
-            if comps:
-                st.write(", ".join(comps))
-
-            st.markdown("**Top rewrite instructions**")
-            for b in (tailored.get("rewrite_instructions") or []):
-                st.write(f"- {b}")
-
-            st.markdown("**Tailored bullets by section**")
-            for section in (tailored.get("tailored_bullets") or []):
-                st.write(f"**{safe_text(section.get('section'))}**")
-                for b in (section.get("bullets") or []):
-                    st.write(f"- {b}")
-
-            st.markdown("**ATS keywords**")
-            kws = tailored.get("ats_keywords") or []
-            if kws:
-                st.write(", ".join(kws))
-
             final_text = safe_text(tailored.get("final_resume_text"))
-            st.markdown("**Paste-ready tailored résumé draft**")
             st.text_area("Tailored résumé text", value=final_text, height=420)
 
             st.download_button(
@@ -282,10 +234,9 @@ if tailor:
 st.divider()
 
 # -------------------------
-# Positioning brief (opening is locked in positioning_brief.py)
+# Positioning brief (opening locked in positioning_brief.py)
 # -------------------------
 st.subheader("Executive Positioning Brief (1-page)")
-
 brief = st.button("Generate positioning brief (1-page)")
 
 if brief:
@@ -300,7 +251,6 @@ if brief:
 
         if memo:
             st.text_area("Positioning brief", value=memo, height=460)
-
             st.download_button(
                 "Download positioning brief (TXT)",
                 data=memo.encode("utf-8"),
@@ -314,7 +264,6 @@ st.divider()
 # Recruiter Outreach Kit
 # -------------------------
 st.subheader("Recruiter Outreach Kit")
-
 outreach = st.button("Generate recruiter outreach kit")
 
 if outreach:
@@ -331,7 +280,6 @@ if outreach:
             st.error("Outreach kit is not available. Confirm OPENAI_API_KEY is set in Render Environment.")
         else:
             st.success("Outreach kit generated.")
-
             email_text = safe_text(kit.get("email"))
             li_text = safe_text(kit.get("linkedin"))
             call_text = safe_text(kit.get("call_talking_points"))
@@ -346,12 +294,9 @@ if outreach:
             st.text_area("Call talking points", value=call_text, height=180)
 
             bundle = (
-                "RECRUITER EMAIL\n\n"
-                + email_text
-                + "\n\nLINKEDIN MESSAGE\n\n"
-                + li_text
-                + "\n\nFIRST-CALL TALKING POINTS\n\n"
-                + call_text
+                "RECRUITER EMAIL\n\n" + email_text
+                + "\n\nLINKEDIN MESSAGE\n\n" + li_text
+                + "\n\nFIRST-CALL TALKING POINTS\n\n" + call_text
             )
 
             st.download_button(
@@ -360,6 +305,94 @@ if outreach:
                 file_name="recruiter_outreach_kit.txt",
                 mime="text/plain",
             )
+
+st.divider()
+
+# -------------------------
+# DASHBOARD (Active roles only)
+# -------------------------
+st.subheader("Dashboard (Active roles)")
+
+items_all = list_pipeline_items(active_only=True, limit=500)
+
+if not items_all:
+    st.info("No active pipeline roles yet. Add a scored role to the pipeline to populate the dashboard.")
+else:
+    # Metrics
+    total_active = len(items_all)
+    scores = [it.get("fit_score") for it in items_all if it.get("fit_score") is not None]
+    avg_score = round(sum(scores) / len(scores), 1) if scores else None
+
+    due_today = 0
+    overdue = 0
+    today = date.today()
+    for it in items_all:
+        d = parse_yyyy_mm_dd(it.get("next_action_date"))
+        if not d:
+            continue
+        if d == today:
+            due_today += 1
+        elif d < today:
+            overdue += 1
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Active roles", total_active)
+    m2.metric("Avg fit score", avg_score if avg_score is not None else "—")
+    m3.metric("Next actions due today", due_today)
+    m4.metric("Overdue next actions", overdue)
+
+    # Stage counts
+    st.markdown("### Roles by stage")
+    stage_counts: dict[str, int] = {}
+    for it in items_all:
+        stage_counts[it.get("stage", "—")] = stage_counts.get(it.get("stage", "—"), 0) + 1
+
+    # Render stage counts as a simple table
+    for stage_name, count in sorted(stage_counts.items(), key=lambda x: (-x[1], x[0])):
+        st.write(f"- **{stage_name}**: {count}")
+
+    # Avg score by stage
+    st.markdown("### Average score by stage")
+    stage_scores: dict[str, list[float]] = {}
+    for it in items_all:
+        s = it.get("fit_score")
+        if s is None:
+            continue
+        stage = it.get("stage", "—")
+        stage_scores.setdefault(stage, []).append(float(s))
+
+    if not stage_scores:
+        st.caption("No fit scores stored yet. Score a role, then add it to pipeline to snapshot the score.")
+    else:
+        for stage_name, arr in sorted(stage_scores.items(), key=lambda x: x[0]):
+            st.write(f"- **{stage_name}**: {round(sum(arr)/len(arr), 1)}")
+
+    # Top roles
+    st.markdown("### Top roles (by fit score)")
+    top = sorted(
+        items_all,
+        key=lambda it: (it.get("fit_score") is not None, it.get("fit_score") or -1),
+        reverse=True,
+    )[:10]
+
+    for it in top:
+        title_txt = safe_text(it.get("title")) or "—"
+        company_txt = safe_text(it.get("company")) or "—"
+        loc = safe_text(it.get("location"))
+        url_txt = safe_text(it.get("url"))
+        score_txt = it.get("fit_score")
+        pr = safe_text(it.get("priority"))
+
+        line = f"**{title_txt} @ {company_txt}**"
+        if loc:
+            line += f" ({loc})"
+        st.write(line)
+        if url_txt:
+            st.write(url_txt)
+        st.write(f"Score: **{score_txt if score_txt is not None else '—'}**   |   Priority: **{pr or '—'}**   |   Stage: **{safe_text(it.get('stage'))}**")
+        if it.get("next_action_date"):
+            st.write(f"Next action: **{safe_text(it.get('next_action_date'))}**")
+        st.divider()
 
 st.divider()
 
@@ -380,6 +413,7 @@ PIPELINE_STAGES = [
     "Rejected",
     "Withdrawn",
 ]
+
 with st.expander("Add current role to pipeline", expanded=False):
     st.caption("Tip: Score a role first so company/title are captured, then add it to your pipeline.")
     stage = st.selectbox("Stage", PIPELINE_STAGES, index=0)
@@ -412,7 +446,7 @@ with st.expander("Add current role to pipeline", expanded=False):
         st.success("Added to pipeline.")
 
 st.markdown("### Active roles")
-items = list_pipeline_items(active_only=True, limit=50)
+items = list_pipeline_items(active_only=True, limit=200)
 
 if not items:
     st.info("No active pipeline items yet.")
@@ -422,13 +456,15 @@ else:
         company_txt = safe_text(it.get("company")) or "—"
         loc = safe_text(it.get("location"))
         url_txt = safe_text(it.get("url"))
-        header = f"{title_txt} @ {company_txt}" + (f" ({loc})" if loc else "")
 
+        header = f"{title_txt} @ {company_txt}" + (f" ({loc})" if loc else "")
         st.markdown(f"**{header}**")
         if url_txt:
             st.write(url_txt)
 
         st.write(f"Stage: **{safe_text(it.get('stage'))}**")
+        if it.get("fit_score") is not None:
+            st.write(f"Fit score: **{it.get('fit_score')}**   |   Priority: **{safe_text(it.get('priority')) or '—'}**")
         if it.get("next_action_date"):
             st.write(f"Next action: **{safe_text(it.get('next_action_date'))}**")
         if it.get("notes"):
@@ -461,6 +497,8 @@ else:
                     next_action_date=new_next or None,
                     notes=new_notes or None,
                     is_active=not deactivate,
+                    fit_score=it.get("fit_score"),
+                    priority=it.get("priority"),
                 )
                 st.success("Updated. Refreshing list...")
                 st.rerun()
