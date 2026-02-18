@@ -530,7 +530,46 @@ with st.expander("Add current role to pipeline", expanded=False):
         st.success("Added to pipeline.")
 
 st.markdown("### Active roles")
-items = list_pipeline_items(active_only=True, limit=200)
+
+items = list_pipeline_items(active_only=True, limit=500)
+
+st.markdown("#### Pipeline filters")
+pipeline_stage_filter = st.multiselect(
+    "Filter stages",
+    options=PIPELINE_STAGES,
+    default=PIPELINE_STAGES,
+)
+
+pipeline_sort = st.selectbox(
+    "Sort pipeline by",
+    options=["Last updated (newest)", "Fit score (high→low)", "Next action date (soonest)"],
+    index=0,
+)
+
+pipeline_overdue_only = st.checkbox("Show only overdue next actions", value=False)
+
+today = date.today()
+
+def _pipeline_pass(it) -> bool:
+    if pipeline_stage_filter and it.get("stage") not in pipeline_stage_filter:
+        return False
+    if pipeline_overdue_only:
+        d = parse_yyyy_mm_dd(it.get("next_action_date"))
+        return bool(d and d < today)
+    return True
+
+items = [it for it in items if _pipeline_pass(it)]
+
+def _pipeline_sort_key(it):
+    if pipeline_sort == "Fit score (high→low)":
+        return (it.get("fit_score") is not None, float(it.get("fit_score") or -1))
+    if pipeline_sort == "Next action date (soonest)":
+        d = parse_yyyy_mm_dd(it.get("next_action_date"))
+        return (d is not None, d or date(9999, 12, 31))
+    return int(it.get("updated_at") or 0)
+
+reverse = pipeline_sort in ["Last updated (newest)", "Fit score (high→low)"]
+items = sorted(items, key=_pipeline_sort_key, reverse=reverse)
 
 if not items:
     st.info("No active pipeline items yet.")
