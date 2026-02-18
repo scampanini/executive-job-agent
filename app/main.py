@@ -483,8 +483,21 @@ def _pipeline_sort_key(it):
 reverse = pipeline_sort in ["Last updated (newest)", "Fit score (high→low)"]
 items = sorted(items, key=_pipeline_sort_key, reverse=reverse)
 
+if not items:
+    st.info("No active pipeline items yet.")
+else:
+    for it in items:
+        title_txt = safe_text(it.get("title")) or "—"
+        company_txt = safe_text(it.get("company")) or "—"
+        loc = safe_text(it.get("location"))
+        url_txt = safe_text(it.get("url"))
 
-    # One-click stage buttons
+        header = f"{title_txt} @ {company_txt}" + (f" ({loc})" if loc else "")
+        st.markdown(f"**{header}**")
+        if url_txt:
+            st.write(url_txt)
+
+        # One-click stage buttons
         cols = st.columns(len(QUICK_STAGE_BUTTONS))
         for idx, target_stage in enumerate(QUICK_STAGE_BUTTONS):
             if cols[idx].button(
