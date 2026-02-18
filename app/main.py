@@ -450,49 +450,41 @@ pipeline_overdue_only = st.checkbox("Show only overdue next actions", value=Fals
 today = date.today()
 
 def _pipeline_pass(it) -> bool:
-stage = it.get("stage") or "—"
-if pipeline_stage_filter and stage not in pipeline_stage_filter:
-    return False
-
+    stage = it.get("stage") or "—"
+    if pipeline_stage_filter and stage not in pipeline_stage_filter:
         return False
+
     if pipeline_overdue_only:
         d = parse_yyyy_mm_dd(it.get("next_action_date"))
         return bool(d and d < today)
+
     return True
 
+
 items = [it for it in items if _pipeline_pass(it)]
+
 
 def _pipeline_sort_key(it):
     if pipeline_sort == "Fit score (high→low)":
         return (it.get("fit_score") is not None, float(it.get("fit_score") or -1))
+
     if pipeline_sort == "Next action date (soonest)":
         d = parse_yyyy_mm_dd(it.get("next_action_date"))
         return (d is not None, d or date(9999, 12, 31))
-val = it.get("updated_at")
-try:
-    return int(val)
-except Exception:
-    return 0
+
+    # Last updated (newest) — robust even if updated_at is None or a string
+    val = it.get("updated_at")
+    try:
+        return int(val or 0)
+    except Exception:
+        return 0
 
 
 reverse = pipeline_sort in ["Last updated (newest)", "Fit score (high→low)"]
 items = sorted(items, key=_pipeline_sort_key, reverse=reverse)
 
-if not items:
-    st.info("No active pipeline items yet.")
-else:
-    for it in items:
-        title_txt = safe_text(it.get("title")) or "—"
-        company_txt = safe_text(it.get("company")) or "—"
-        loc = safe_text(it.get("location"))
-        url_txt = safe_text(it.get("url"))
 
-        header = f"{title_txt} @ {company_txt}" + (f" ({loc})" if loc else "")
-        st.markdown(f"**{header}**")
-        if url_txt:
-            st.write(url_txt)
-
-        # One-click stage buttons
+    # One-click stage buttons
         cols = st.columns(len(QUICK_STAGE_BUTTONS))
         for idx, target_stage in enumerate(QUICK_STAGE_BUTTONS):
             if cols[idx].button(
