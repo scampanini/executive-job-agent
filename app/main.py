@@ -538,23 +538,27 @@ else:
             new_stage = st.selectbox(
                 "New stage",
                 PIPELINE_STAGES,
-                index=PIPELINE_STAGES.index(it["stage"]) if it.get("stage") in PIPELINE_STAGES else 0,
+                index=PIPELINE_STAGES.index(it.get("stage")) if it.get("stage") in PIPELINE_STAGES else 0,
                 key=f"stage_{pid}",
             )
             new_next = st.text_input(
                 "Next action date (YYYY-MM-DD)",
                 value=safe_text(it.get("next_action_date")),
-                key=f"next_{it['pipeline_id']}",
+                key=f"next_{pid}",
             )
             new_notes = st.text_area(
                 "Notes",
                 value=safe_text(it.get("notes")),
                 height=120,
-                key=f"notes_{it['pipeline_id']}",
+                key=f"notes_{pid}",
             )
-            deactivate = st.checkbox("Mark inactive (closed)", value=False, key=f"closed_{it['pipeline_id']}")
+            deactivate = st.checkbox(
+                "Mark inactive (closed)",
+                value=False,
+                key=f"closed_{pid}",
+            )
 
-            if st.button("Save update", key=f"save_{it['pipeline_id']}"):
+            if st.button("Save update", key=f"save_{pid}"):
                 update_pipeline_item(
                     pipeline_id=pid,
                     stage=new_stage,
