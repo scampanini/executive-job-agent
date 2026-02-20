@@ -7,6 +7,7 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 from collections import Counter
+from app.core.storage import get_setting, set_setting
 
 # Headless-safe matplotlib for Render (must be before pyplot)
 import matplotlib
@@ -110,6 +111,32 @@ with st.sidebar:
     st.write("OPENAI_API_KEY set:", bool(os.getenv("OPENAI_API_KEY")))
     st.write("OPENAI_MODEL:", os.getenv("OPENAI_MODEL", "(not set)"))
 
+    st.divider()
+    st.subheader("Phase 3: Email + Gmail")
+
+    # Feature flag (stored in SQLite)
+    enabled = get_setting("gmail_ingest_enabled", "0")
+    gmail_ingest_enabled = st.toggle(
+        "Enable Gmail ingest (read-only)",
+        value=(enabled == "1"),
+    )
+    set_setting("gmail_ingest_enabled", "1" if gmail_ingest_enabled else "0")
+
+    # Target inbox email (SQLite with env fallback)
+    env_email = os.getenv("TARGET_INBOX_EMAIL", "")
+    current_email = get_setting("target_inbox_email", env_email) or ""
+    target_email = st.text_input(
+        "Target inbox email address",
+        value=current_email,
+        help="Stored in SQLite. Falls back to TARGET_INBOX_EMAIL if not set.",
+    )
+
+    if st.button("Save inbox email", use_container_width=True):
+        set_setting("target_inbox_email", target_email.strip())
+        st.cache_data.clear()
+        st.rerun()
+
+    st.caption(f"Current inbox: {get_setting('target_inbox_email', env_email) or '(not set)'}")
 
 col_l, col_r = st.columns(2)
 
