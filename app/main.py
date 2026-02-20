@@ -39,7 +39,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.core.resume_parse import load_resume
-from app.core.scoring import heuristic_score, ai_score
+from app.core.scoring import heuristic_score, ai_score, blended_score
 from app.core.resume_tailor import tailor_resume_ai
 from app.core.positioning_brief import generate_positioning_brief
 from app.core.recruiter_outreach import generate_recruiter_outreach
@@ -95,7 +95,6 @@ def score_role(
     if use_ai:
         try:
             return _call_scorer(blended_score, combined_resume_context, job_text, min_base), "openai"
-        except Exception as e:
             return {
                 "error": f"AI scoring failed; falling back to heuristic scoring. Details: {e}",
                 **_call_scorer(heuristic_score, combined_resume_context, job_text, min_base),
