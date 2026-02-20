@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
 import os
 import re
 from dotenv import load_dotenv
@@ -182,3 +182,103 @@ Return JSON ONLY with this schema:
         if m:
             return _json.loads(m.group(0))
         raise
+
+# ==============================
+# PHASE 3B – BLENDED SCORING
+# ==============================
+
+def _priority_from_score(s: int) -> str:
+    return "HIGH" if s >= 85 else "MEDIUM" if s >= 70 else "LOW"
+
+
+def _normalize_ai_to_common(ai: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Convert ai_score() schema -> the same top-level keys heuristic_score returns
+    so your UI can stay consistent.
+    """
+    overall = int(ai.get("overall_score", 0) or 0)
+    overall = max(0, min(100, overall))
+
+    strengths = ai.get("why_this_fits") or []
+    gaps = ai.get("risks_or_gaps") or []
+
+    if not isinstance(strengths, list):
+        strengths = []
+    if not isinstance(gaps, list):
+        gaps = []
+
+    recommended_angle = ai.get("two_line_pitch") or ""
+    notes = ai.get("notes") or ""
+
+    return {
+        "overall_score": overall,
+        "priority": ai.get("priority") or _priority_from_score(overall),
+        "strengths": strengths[:5],
+        "gaps": gaps[:5],
+        "recommended_angle": recommended_angle,
+        "notes": notes,
+        # keep extra structured fields if you want them later in the UI
+        "top_resume_edits": ai.get("top_resume_edits") or [],
+        "interview_leverage_points": ai.get("interview_leverage_points") or [],
+        "likely_reporting_relationships": ai.get("likely_reporting_relationships") or [],
+    }
+
+
+def blended_score(
+    resume_text: str,
+    job_text: str,
+    min_base_salary: int = 275000,
+    ai_gate: int = 55,
+    blend_weight_ai: float = 0.50,
+) -> Dict[str, Any]:
+    """
+    Stable blended scoring:
+    - Always compute heuristic_score (cheap).
+    - Only call ai_score if heuristic >= ai_gate (cost control).
+    - Blend the two for a final overall_score.
+    - Return the same schema your dashboard expects.
+    """
+    det = heuristic_score(resume_text, job_text, min_base_salary=min_base_salary)
+    det_score = int(det.get("overall_score", 0) or 0)
+
+    # Gate AI (batch cost control)
+    if det_score < ai_gate:
+        det["scoring_method"] = "heuristic_only"
+        det["ai_gated_out"] = True
+        return det
+
+    ai = ai_score(resume_text, job_text)
+    if not ai:
+        det["scoring_method"] = "heuristic_fallback"
+        det["ai_failed"] = True
+        return det
+
+    ai_norm = _normalize_ai_to_common(ai)
+    ai_score_val = int(ai_norm.get("overall_score", 0) or 0)
+
+    blended = int(round((1 - blend_weight_ai) * det_score + blend_weight_ai * ai_score_val))
+    blended = max(0, min(100, blended))
+
+    # Merge: keep deterministic dimensions, but promote blended top-level
+    out = dict(det)
+    out["overall_score"] = blended
+    out["priority"] = _priority_from_score(blended)
+    out["scoring_method"] = "blended"
+    out["deterministic_score"] = det_score
+    out["ai_score"] = ai_score_val
+
+    # Prefer AI narrative if present; otherwise keep heuristic
+    if ai_norm.get("strengths"):
+        out["strengths"] = ai_norm["strengths"]
+    if ai_norm.get("gaps"):
+        out["gaps"] = ai_norm["gaps"]
+    if ai_norm.get("recommended_angle"):
+        out["recommended_angle"] = ai_norm["recommended_angle"]
+
+    # Carry extras (optional)
+    out["top_resume_edits"] = ai_norm.get("top_resume_edits", [])
+    out["interview_leverage_points"] = ai_norm.get("interview_leverage_points", [])
+    out["likely_reporting_relationships"] = ai_norm.get("likely_reporting_relationships", [])
+    out["notes"] = ai_norm.get("notes", "")
+
+    return out
