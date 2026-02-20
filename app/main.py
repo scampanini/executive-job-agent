@@ -74,18 +74,42 @@ def _call_scorer(fn, resume_text: str, job_text: str, min_base: int):
     return fn(resume_text, job_text)
 
 
-def score_role(resume_text: str, job_text: str, use_ai: bool, min_base: int):
+def score_role(
+    resume_text: str,
+    job_text: str,
+    use_ai: bool,
+    min_base: int,
+    portfolio_text: str = "",
+    gap_answers_text: str = "",
+):
+    """
+    Scoring input is grounded in:
+    - resume_text (primary truth source)
+    - portfolio_text (real examples / supporting detail)
+    - gap_answers_text (user-provided clarifications)
+
+    Nothing should be invented; these are additional factual inputs.
+    """
+    combined_resume_context = resume_text
+
+    if portfolio_text.strip():
+        combined_resume_context += "\n\n=== PORTFOLIO / EXPERIENCE EXAMPLES (USER-PROVIDED) ===\n"
+        combined_resume_context += portfolio_text.strip()
+
+    if gap_answers_text.strip():
+        combined_resume_context += "\n\n=== GAP ANSWERS (USER-PROVIDED) ===\n"
+        combined_resume_context += gap_answers_text.strip()
+
     if use_ai:
         try:
-            return _call_scorer(ai_score, resume_text, job_text, min_base), "openai"
+            return _call_scorer(ai_score, combined_resume_context, job_text, min_base), "openai"
         except Exception as e:
             return {
                 "error": f"AI scoring failed; falling back to heuristic scoring. Details: {e}",
-                **_call_scorer(heuristic_score, resume_text, job_text, min_base),
+                **_call_scorer(heuristic_score, combined_resume_context, job_text, min_base),
             }, "heuristic"
-    return _call_scorer(heuristic_score, resume_text, job_text, min_base), "heuristic"
 
-
+    return _call_scorer(heuristic_score, combined_resume_context, job_text, min_base), "heuristic"
 def parse_yyyy_mm_dd(s: str):
     s = (s or "").strip()
     if not s:
@@ -276,8 +300,31 @@ if run:
     updated = attach_unlinked_gap_questions_to_job(job_id=job_id, limit=50)
     if updated:
         st.info(f"Linked {updated} open gap questions to this job record.")
-        
+
     resume_id = save_resume(source=resume_source or "upload", raw_text=resume_text)
+
+    answered = list_gap_questions(job_id=job_id, unanswered_only=False, limit=50)
+    answered_pairs = []
+    for item in answered:
+        if item.get("answer"):
+            answered_pairs.append(f"Q: {item['question']}\nA: {item['answer']}")
+
+    gap_answers_text = "\n\n".join(answered_pairs)
+
+    result, model_used = score_role(
+        resume_text,
+        job_desc,
+        use_ai=use_ai,
+        min_base=min_base,
+        portfolio_text=portfolio_text,
+        gap_answers_text=gap_answers_text,
+    )
+
+    save_score(job_id=job_id, resume_id=resume_id, result=result, model=model_used)
+
+    # Session state for downstream tools
+
+save_score(job_id=job_id, resume_id=resume_id, result=result, model=model_used)
 
     result, model_used = score_role(resume_text, job_desc, use_ai=use_ai, min_base=min_base)
     save_score(job_id=job_id, resume_id=resume_id, result=result, model=model_used)
