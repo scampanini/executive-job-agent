@@ -328,8 +328,11 @@ if run:
     save_score(job_id=job_id, resume_id=resume_id, result=result, model=model_used)
 
     # Session state for downstream tools
+job_id = locals().get("job_id")
+resume_id = locals().get("resume_id")
 
-save_score(job_id=job_id, resume_id=resume_id, result=result, model=model_used)
+if job_id and resume_id:
+    save_score(job_id=job_id, resume_id=resume_id, result=result, model=model_used)
 
 result, model_used = score_role(
     resume_text, 
