@@ -94,23 +94,33 @@ def score_role(
 
     if use_ai:
         try:
-            return _call_scorer(blended_score, combined_resume_context, job_text, min_base), "openai"
-            return {
-                "error": f"AI scoring failed; falling back to heuristic scoring. Details: {e}",
-                **_call_scorer(heuristic_score, combined_resume_context, job_text, min_base),
-            }, "heuristic"
+            return (
+                _call_scorer(blended_score, combined_resume_context, job_text, min_base),
+                "openai",
+            )
+        except Exception as e:
+            return (
+                {
+                    "error": f"AI scoring failed; falling back to heuristic scoring. Details: {e}",
+                    **_call_scorer(
+                        heuristic_score,
+                        combined_resume_context,
+                        job_text,
+                        min_base,
+                    ),
+                },
+                "heuristic",
+            )
 
-    return _call_scorer(heuristic_score, combined_resume_context, job_text, min_base), "heuristic"
-    
-def parse_yyyy_mm_dd(s: str):
-    s = (s or "").strip()
-    if not s:
-        return None
-    try:
-        return datetime.strptime(s, "%Y-%m-%d").date()
-    except Exception:
-        return None
-
+    return (
+        _call_scorer(
+            heuristic_score,
+            combined_resume_context,
+            job_text,
+            min_base,
+        ),
+        "heuristic",
+    )
 
 st.set_page_config(page_title="Executive Job Agent (Personal)", layout="wide")
 init_db()
