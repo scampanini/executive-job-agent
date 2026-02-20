@@ -256,11 +256,11 @@ with col_r:
                 st.cache_data.clear()
                 st.rerun()
 
-    run = st.button("Score this role", type="primary")
 if run:
     if not resume_text.strip():
         st.error("Please upload your résumé first.")
         st.stop()
+        
     if not job_desc.strip():
         st.error("Please paste a job description.")
         st.stop()
