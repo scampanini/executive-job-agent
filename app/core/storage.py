@@ -347,3 +347,32 @@ def list_pipeline_items(
             }
         )
     return out
+
+# -------------------------
+# Phase 3: Settings helpers
+# -------------------------
+
+def get_setting(key: str, default: Optional[str] = None, db_path: Path = DEFAULT_DB) -> Optional[str]:
+    init_db(db_path)
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT value FROM settings WHERE key=?", (key,))
+    row = cur.fetchone()
+    conn.close()
+    if row is None:
+        return default
+    return str(row[0])
+
+
+def set_setting(key: str, value: str, db_path: Path = DEFAULT_DB) -> None:
+    init_db(db_path)
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    now = int(time.time())
+    cur.execute(
+        "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+        (key, value, now),
+    )
+    conn.commit()
+    conn.close()
