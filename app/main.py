@@ -314,7 +314,6 @@ if run:
     for item in answered:
         if item.get("answer"):
             answered_pairs.append(f"Q: {item['question']}\nA: {item['answer']}")
-
     gap_answers_text = "\n\n".join(answered_pairs)
 
     result, model_used = score_role(
