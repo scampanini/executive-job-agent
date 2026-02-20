@@ -250,6 +250,7 @@ with col_r:
     st.subheader("Fill gaps (so outputs stay factual)")
 
     # Generate gap questions (AI if enabled later; v1 is a safe heuristic set)
+    run = False
     if st.button("Generate gap questions", use_container_width=True):
         questions = [
             "What are 1–2 examples of supporting a CEO or C-suite leader (cadence, priorities, decision support)?",
@@ -281,6 +282,9 @@ with col_r:
                 answer_gap_question(question_id=int(item["id"]), answer=ans.strip())
                 st.cache_data.clear()
                 st.rerun()
+
+with st.form("score_role_form"):
+    run = st.form_submit_button("Score role")
 
 if run:
     if not resume_text.strip():
