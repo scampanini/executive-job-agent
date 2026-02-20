@@ -260,12 +260,11 @@ if run:
     if not resume_text.strip():
         st.error("Please upload your résumé first.")
         st.stop()
-        
+
     if not job_desc.strip():
         st.error("Please paste a job description.")
         st.stop()
 
-    resume_id = save_resume(source=resume_source or "upload", raw_text=resume_text)
     job_id = save_job(
         description=job_desc,
         company=company or None,
@@ -273,6 +272,12 @@ if run:
         location=location or None,
         url=url or None,
     )
+
+    updated = attach_unlinked_gap_questions_to_job(job_id=job_id, limit=50)
+    if updated:
+        st.info(f"Linked {updated} open gap questions to this job record.")
+        
+    resume_id = save_resume(source=resume_source or "upload", raw_text=resume_text)
 
     result, model_used = score_role(resume_text, job_desc, use_ai=use_ai, min_base=min_base)
     save_score(job_id=job_id, resume_id=resume_id, result=result, model=model_used)
