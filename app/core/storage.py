@@ -422,3 +422,141 @@ def finish_email_ingest_run(
     )
     conn.commit()
     conn.close()
+
+# -------------------------
+# Phase 3: Documents (resume + portfolio)
+# -------------------------
+
+def save_document(
+    doc_type: str,
+    raw_text: str,
+    source: Optional[str] = None,
+    mime: Optional[str] = None,
+    text_hash: Optional[str] = None,
+    db_path: Path = DEFAULT_DB,
+) -> int:
+    """
+    doc_type: 'resume' or 'portfolio'
+    """
+    init_db(db_path)
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO documents (created_at, doc_type, source, mime, raw_text, text_hash) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (int(time.time()), doc_type, source, mime, raw_text, text_hash),
+    )
+    conn.commit()
+    did = int(cur.lastrowid)
+    conn.close()
+    return did
+
+
+def get_latest_document(doc_type: str, db_path: Path = DEFAULT_DB) -> Optional[Dict[str, Any]]:
+    init_db(db_path)
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id, created_at, doc_type, source, mime, raw_text, text_hash "
+        "FROM documents WHERE doc_type=? ORDER BY created_at DESC LIMIT 1",
+        (doc_type,),
+    )
+    row = cur.fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return {
+        "id": row[0],
+        "created_at": row[1],
+        "doc_type": row[2],
+        "source": row[3],
+        "mime": row[4],
+        "raw_text": row[5],
+        "text_hash": row[6],
+    }
+
+# -------------------------
+# Phase 3: Gap questions
+# -------------------------
+
+def create_gap_question(
+    question: str,
+    gap_type: Optional[str] = None,
+    job_id: Optional[int] = None,
+    db_path: Path = DEFAULT_DB,
+) -> int:
+    init_db(db_path)
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO gap_questions (created_at, job_id, gap_type, question) VALUES (?, ?, ?, ?)",
+        (int(time.time()), job_id, gap_type, question),
+    )
+    conn.commit()
+    qid = int(cur.lastrowid)
+    conn.close()
+    return qid
+
+
+def answer_gap_question(
+    question_id: int,
+    answer: str,
+    db_path: Path = DEFAULT_DB,
+) -> None:
+    init_db(db_path)
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    now = int(time.time())
+    cur.execute(
+        "UPDATE gap_questions SET answer=?, answered_at=? WHERE id=?",
+        (answer, now, question_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def list_gap_questions(
+    job_id: Optional[int] = None,
+    unanswered_only: bool = False,
+    limit: int = 50,
+    db_path: Path = DEFAULT_DB,
+) -> List[Dict[str, Any]]:
+    init_db(db_path)
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+
+    where = []
+    params: List[Any] = []
+    if job_id is not None:
+        where.append("job_id=?")
+        params.append(job_id)
+    if unanswered_only:
+        where.append("answer IS NULL")
+
+    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+
+    cur.execute(
+        "SELECT id, created_at, job_id, gap_type, question, answer, answered_at "
+        "FROM gap_questions "
+        f"{where_sql} "
+        "ORDER BY created_at DESC LIMIT ?",
+        tuple(params + [limit]),
+    )
+    rows = cur.fetchall()
+    conn.close()
+
+    out: List[Dict[str, Any]] = []
+    for rid, created_at, jid, gtype, question, answer, answered_at in rows:
+        out.append(
+            {
+                "id": rid,
+                "created_at": created_at,
+                "job_id": jid,
+                "gap_type": gtype,
+                "question": question,
+                "answer": answer,
+                "answered_at": answered_at,
+            }
+        )
+    return out
+
