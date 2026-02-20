@@ -7,7 +7,7 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 from collections import Counter
-from app.core.storage import get_setting, set_setting, save_document, create_gap_question, list_gap_questions, answer_gap_question
+from app.core.storage import get_setting, set_setting, save_document, create_gap_question, list_gap_questions, answer_gap_question, attach_unlinked_gap_questions_to_job, save_job
 
 # Headless-safe matplotlib for Render (must be before pyplot)
 import matplotlib
