@@ -376,3 +376,49 @@ def set_setting(key: str, value: str, db_path: Path = DEFAULT_DB) -> None:
     )
     conn.commit()
     conn.close()
+
+# -------------------------
+# Phase 3: Email ingest run tracking
+# -------------------------
+
+def start_email_ingest_run(
+    target_email: Optional[str],
+    query: Optional[str],
+    max_results: int,
+    db_path: Path = DEFAULT_DB,
+) -> int:
+    init_db(db_path)
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    now = int(time.time())
+    cur.execute(
+        "INSERT INTO email_ingest_runs (started_at, target_email, query, max_results, status) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (now, target_email, query, int(max_results), "started"),
+    )
+    conn.commit()
+    run_id = int(cur.lastrowid)
+    conn.close()
+    return run_id
+
+
+def finish_email_ingest_run(
+    run_id: int,
+    status: str,
+    fetched_count: int = 0,
+    inserted_count: int = 0,
+    skipped_count: int = 0,
+    error_text: Optional[str] = None,
+    db_path: Path = DEFAULT_DB,
+) -> None:
+    init_db(db_path)
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    now = int(time.time())
+    cur.execute(
+        "UPDATE email_ingest_runs SET finished_at=?, status=?, fetched_count=?, inserted_count=?, skipped_count=?, error_text=? "
+        "WHERE id=?",
+        (now, status, int(fetched_count), int(inserted_count), int(skipped_count), error_text, int(run_id)),
+    )
+    conn.commit()
+    conn.close()
