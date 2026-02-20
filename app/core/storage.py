@@ -560,3 +560,28 @@ def list_gap_questions(
         )
     return out
 
+# -------------------------
+# Phase 3: Gap question linking
+# -------------------------
+
+def attach_unlinked_gap_questions_to_job(
+    job_id: int,
+    limit: int = 50,
+    db_path: Path = DEFAULT_DB,
+) -> int:
+    """
+    Attach recent unlinked gap questions (job_id IS NULL) to a job.
+    Returns number of rows updated.
+    """
+    init_db(db_path)
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE gap_questions SET job_id=? WHERE job_id IS NULL AND answer IS NULL "
+        "AND id IN (SELECT id FROM gap_questions WHERE job_id IS NULL AND answer IS NULL ORDER BY created_at DESC LIMIT ?)",
+        (int(job_id), int(limit)),
+    )
+    conn.commit()
+    updated = int(cur.rowcount)
+    conn.close()
+    return updated
