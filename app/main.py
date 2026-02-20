@@ -7,7 +7,7 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 from collections import Counter
-from app.core.storage import get_setting, set_setting, save_document
+from app.core.storage import get_setting, set_setting, save_document, create_gap_question, list_gap_questions, answer_gap_question
 
 # Headless-safe matplotlib for Render (must be before pyplot)
 import matplotlib
@@ -220,8 +220,43 @@ with col_r:
     url = st.text_input("Job URL (optional)", value="")
     job_desc = st.text_area("Job description", height=320)
 
-run = st.button("Score this role", type="primary")
+    st.divider()
+    st.subheader("Fill gaps (so outputs stay factual)")
 
+    # Generate gap questions (AI if enabled later; v1 is a safe heuristic set)
+    if st.button("Generate gap questions", use_container_width=True):
+        questions = [
+            "What are 1–2 examples of supporting a CEO or C-suite leader (cadence, priorities, decision support)?",
+            "Do you have an example involving Board materials, QBRs, or executive presentations? What was your role?",
+            "What tools/systems are you strongest in (Office, Google, Slack, Teams, Concur, Workday, ATS, CRM, etc.)?",
+            "Have you managed budgets, purchase orders, invoices, or vendor relationships? Any approximate scope?",
+            "Any experience with confidential matters (reorgs, M&A, HR issues, legal) you can describe at a high level?",
+            "Any example of process improvement (what you changed, why, and the result)?",
+        ]
+        for q in questions:
+            create_gap_question(question=q, gap_type="resume", job_id=None)
+
+        st.success("Gap questions created. Answer them below.")
+
+    # Show latest unanswered questions (v1: not tied to a job_id yet)
+    gaps = list_gap_questions(job_id=None, unanswered_only=True, limit=20)
+
+    if not gaps:
+        st.caption("No open gap questions yet. Click “Generate gap questions” to create a short set.")
+    else:
+        for item in gaps:
+            st.write(f"**Q:** {item['question']}")
+            ans = st.text_input(
+                "Your answer",
+                value="",
+                key=f"gap_answer_{item['id']}",
+            )
+            if st.button("Save answer", key=f"gap_save_{item['id']}"):
+                answer_gap_question(question_id=int(item["id"]), answer=ans.strip())
+                st.cache_data.clear()
+                st.rerun()
+
+    run = st.button("Score this role", type="primary")
 if run:
     if not resume_text.strip():
         st.error("Please upload your résumé first.")
