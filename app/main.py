@@ -328,16 +328,26 @@ if run:
 
 save_score(job_id=job_id, resume_id=resume_id, result=result, model=model_used)
 
-    result, model_used = score_role(resume_text, job_desc, use_ai=use_ai, min_base=min_base)
-    save_score(job_id=job_id, resume_id=resume_id, result=result, model=model_used)
+result, model_used = score_role(
+    resume_text, 
+    job_desc, 
+    use_ai=use_ai, min_base=min_base,
+)
 
-    # Session state for downstream tools
-    st.session_state["last_resume_text"] = resume_text
-    st.session_state["last_job_text"] = job_desc
-    st.session_state["last_company"] = company or ""
-    st.session_state["last_title"] = title or ""
-    st.session_state["last_job_id"] = job_id
-    st.session_state["last_score_result"] = result
+save_score(
+    job_id=job_id,
+    resume_id=resume_id,
+    result=result,
+    model=model_used,
+)
+
+# Session state for downstream tools
+st.session_state["last_resume_text"] = resume_text
+st.session_state["last_job_text"] = job_desc
+st.session_state["last_company"] = company or ""
+st.session_state["last_title"] = title or ""
+st.session_state["last_job_id"] = job_id
+st.session_state["last_score_result"] = result
 
     # Readable output
     if isinstance(result, dict) and result.get("error"):
