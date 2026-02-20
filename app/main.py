@@ -82,14 +82,6 @@ def score_role(
     portfolio_text: str = "",
     gap_answers_text: str = "",
 ):
-    """
-    Scoring input is grounded in:
-    - resume_text (primary truth source)
-    - portfolio_text (real examples / supporting detail)
-    - gap_answers_text (user-provided clarifications)
-
-    Nothing should be invented; these are additional factual inputs.
-    """
     combined_resume_context = resume_text
 
     if portfolio_text.strip():
@@ -102,7 +94,7 @@ def score_role(
 
     if use_ai:
         try:
-            return _call_scorer(ai_score, combined_resume_context, job_text, min_base), "openai"
+            return _call_scorer(blended_score, combined_resume_context, job_text, min_base), "openai"
         except Exception as e:
             return {
                 "error": f"AI scoring failed; falling back to heuristic scoring. Details: {e}",
@@ -110,6 +102,7 @@ def score_role(
             }, "heuristic"
 
     return _call_scorer(heuristic_score, combined_resume_context, job_text, min_base), "heuristic"
+    
 def parse_yyyy_mm_dd(s: str):
     s = (s or "").strip()
     if not s:
