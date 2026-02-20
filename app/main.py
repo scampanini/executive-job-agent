@@ -349,44 +349,48 @@ st.session_state["last_title"] = title or ""
 st.session_state["last_job_id"] = job_id
 st.session_state["last_score_result"] = result
 
-    # Readable output
-    if isinstance(result, dict) and result.get("error"):
-        st.warning(result["error"])
+st.session_state["last_score_result"] = result
 
-    if not isinstance(result, dict):
-        st.write(result)
-    else:
-        overall = result.get("overall_score") or result.get("total_score") or result.get("score")
-        priority = result.get("priority")
+st.session_state["last_score_result"] = result
 
-        st.subheader("Fit score")
-        if overall is not None:
-            st.metric("Overall Score", overall)
-        if priority:
-            st.write(f"Priority: **{priority}**")
+# Readable output
+if isinstance(result, dict) and result.get("error"):
+    st.warning(result["error"])
 
-        def _render_list(title_txt: str, key: str):
-            items = result.get(key) or []
-            if items:
-                st.subheader(title_txt)
-                for x in items:
-                    st.write(f"- {x}")
+if not isinstance(result, dict):
+    st.write(result)
+else:
+    overall = result.get("overall_score") or result.get("total_score") or result.get("score")
+    priority = result.get("priority")
 
-        _render_list("Why this fits", "why_this_fits")
-        _render_list("Risks / gaps", "risks_or_gaps")
-        _render_list("Top résumé edits", "top_resume_edits")
-        _render_list("Interview leverage points", "interview_leverage_points")
+    st.subheader("Fit score")
+    if overall is not None:
+        st.metric("Overall Score", overall)
 
-        pitch = result.get("two_line_pitch")
-        if pitch:
-            st.subheader("Two-line pitch")
-            st.write(pitch)
+    if priority:
+        st.write(f"Priority: **{priority}**")
 
-        with st.expander("Full scoring output (debug)", expanded=False):
-            st.json(result)
+    def _render_list(title_txt: str, key: str):
+        items = result.get(key) or []
+        if items:
+            st.subheader(title_txt)
+            for x in items:
+                st.write(f"- {x}")
 
-    st.info(f"Scoring mode used: {model_used}")
+    _render_list("Why this fits", "why_this_fits")
+    _render_list("Risks / gaps", "risks_or_gaps")
+    _render_list("Top résumé edits", "top_resume_edits")
+    _render_list("Interview leverage points", "interview_leverage_points")
 
+    pitch = result.get("two_line_pitch")
+    if pitch:
+        st.subheader("Two-line pitch")
+        st.write(pitch)
+
+    with st.expander("Full scoring output (debug)", expanded=False):
+        st.json(result)
+
+st.info(f"Scoring mode used: {model_used}")
 st.divider()
 
 # -------------------------
@@ -405,20 +409,22 @@ if tailor:
         with st.spinner("Generating tailored résumé..."):
             tailored = tailor_resume_ai(resume_text_last, job_text_last)
 
-        st.session_state["last_tailored"] = tailored
-
         if not tailored:
-            st.error("AI tailoring not available. Confirm OPENAI_API_KEY is set in Render Environment.")
+            st.error("AI tailoring not available. Confirm OPENAI_API_KEY is set.")
         else:
+            st.session_state["last_tailored"] = tailored
+
             st.success("Tailored résumé generated.")
+
+            headline = safe_text(tailored.get("tailored_headline", ""))
             st.markdown("**Tailored headline**")
-            st.write(safe_text(tailored.get("tailored_headline")))
+            st.write(headline)
 
             st.markdown("**Tailored executive summary**")
             for b in (tailored.get("tailored_summary") or []):
-                st.write(f"- {b}")
+                st.write(f"- {safe_text(b)}")
 
-            final_text = safe_text(tailored.get("final_resume_text"))
+            final_text = safe_text(tailored.get("final_resume_text")) or ""
             st.text_area("Tailored résumé text", value=final_text, height=420)
 
             st.download_button(
