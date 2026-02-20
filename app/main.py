@@ -7,7 +7,7 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 from collections import Counter
-from app.core.storage import get_setting, set_setting
+from app.core.storage import get_setting, set_setting, save_document
 
 # Headless-safe matplotlib for Render (must be before pyplot)
 import matplotlib
@@ -167,6 +167,50 @@ with col_l:
             st.error(f"Could not parse résumé: {e}")
             resume_text = ""
             resume_source = ""
+
+    st.divider()
+    st.subheader("2) Upload your portfolio / experience examples (optional)")
+
+    uploaded_portfolio = st.file_uploader(
+        "Upload portfolio (PDF/DOCX)",
+        type=["pdf", "docx"],
+        key="portfolio_uploader",
+        help="Optional. Add real examples, metrics, leadership scope, and impact stories not fully reflected in your résumé.",
+    )
+
+    portfolio_text = ""
+    portfolio_source = ""
+
+    if uploaded_portfolio:
+        suffix = ".pdf" if uploaded_portfolio.type == "application/pdf" else ".docx"
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(uploaded_portfolio.getvalue())
+            tmp_path = tmp.name
+
+        try:
+            portfolio = load_resume(tmp_path, None)
+
+            portfolio_text = (
+                getattr(portfolio, "raw_text", None)
+                or getattr(portfolio, "text", None)
+                or str(portfolio)
+            )
+
+            portfolio_source = uploaded_portfolio.name
+            st.success(f"Loaded portfolio: {portfolio_source}")
+
+            save_document(
+                doc_type="portfolio",
+                raw_text=portfolio_text,
+                source=portfolio_source,
+                mime=uploaded_portfolio.type,
+            )
+
+        except Exception as e:
+            st.error(f"Could not parse portfolio: {e}")
+            portfolio_text = ""
+            portfolio_source = ""
 
 with col_r:
     st.subheader("2) Paste job description")
