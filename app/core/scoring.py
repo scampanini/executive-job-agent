@@ -30,7 +30,7 @@ def _count_hits(text: str, words: List[str]) -> int:
     t = text.lower()
     return sum(1 for w in words if w.lower() in t)
 
-def heuristic_score(resume_text: str, job_text: str, min_base_salary: int = 275000) -> Dict[str, Any]:
+def heuristic_score(resume_text: str, job_text: str, min_base_salary: int = 275000, **kwargs):
     jt = job_text.lower()
     rt = resume_text.lower()
 
@@ -181,7 +181,7 @@ Return JSON ONLY with this schema:
         m = re.search(r"\{.*\}", text, flags=re.S)
         if m:
             return _json.loads(m.group(0))
-        raise
+        return None
 
 # ==============================
 # PHASE 3B – BLENDED SCORING
