@@ -112,7 +112,7 @@ with st.sidebar:
     st.write("OPENAI_MODEL:", os.getenv("OPENAI_MODEL", "(not set)"))
 
     st.divider()
-    st.subheader("Phase 3: Email + Gmail")
+    st.subheader("Email Address for Job Targets")
 
     # Feature flag (stored in SQLite)
     enabled = get_setting("gmail_ingest_enabled", "0")
