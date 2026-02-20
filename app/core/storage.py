@@ -75,7 +75,95 @@ def init_db(db_path: Path = DEFAULT_DB) -> None:
         cur.execute("ALTER TABLE pipeline ADD COLUMN priority TEXT")
     except sqlite3.OperationalError:
         pass
+    # -------------------------
+    # Phase 3: settings (email + feature flags)
+    # -------------------------
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS settings ("
+        "key TEXT PRIMARY KEY,"
+        "value TEXT NOT NULL,"
+        "updated_at INTEGER NOT NULL)"
+    )
 
+    # -------------------------
+    # Phase 3: documents (resume + portfolio)
+    # -------------------------
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS documents ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "created_at INTEGER NOT NULL,"
+        "doc_type TEXT NOT NULL,"  # 'resume' | 'portfolio'
+        "source TEXT,"             # filename or origin label
+        "mime TEXT,"               # e.g., application/pdf
+        "raw_text TEXT NOT NULL,"
+        "text_hash TEXT)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_documents_type_created ON documents(doc_type, created_at)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(text_hash)"
+    )
+
+    # -------------------------
+    # Phase 3: Gmail ingest storage (read-only first)
+    # -------------------------
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS emails_raw ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "ingested_at INTEGER NOT NULL,"
+        "gmail_message_id TEXT NOT NULL,"      # Gmail API message.id (unique per mailbox)
+        "thread_id TEXT,"
+        "rfc_message_id TEXT,"                 # RFC Message-ID header if available
+        "internal_date_ms INTEGER,"            # Gmail internalDate
+        "from_email TEXT,"
+        "subject TEXT,"
+        "snippet TEXT,"
+        "headers_json TEXT,"
+        "body_text_sanitized TEXT,"
+        "raw_json TEXT,"
+        "UNIQUE(gmail_message_id))"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_emails_raw_rfc_mid ON emails_raw(rfc_message_id)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_emails_raw_internal_date ON emails_raw(internal_date_ms)"
+    )
+
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS email_ingest_runs ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "started_at INTEGER NOT NULL,"
+        "finished_at INTEGER,"
+        "target_email TEXT,"
+        "query TEXT,"
+        "max_results INTEGER,"
+        "fetched_count INTEGER NOT NULL DEFAULT 0,"
+        "inserted_count INTEGER NOT NULL DEFAULT 0,"
+        "skipped_count INTEGER NOT NULL DEFAULT 0,"
+        "status TEXT NOT NULL,"                 # 'started'|'ok'|'error'
+        "error_text TEXT)"
+    )
+
+    # -------------------------
+    # Phase 3: gap questions (after resume+portfolio analysis)
+    # -------------------------
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS gap_questions ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "created_at INTEGER NOT NULL,"
+        "job_id INTEGER,"
+        "gap_type TEXT,"
+        "question TEXT NOT NULL,"
+        "answer TEXT,"
+        "answered_at INTEGER,"
+        "FOREIGN KEY(job_id) REFERENCES job(id))"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_gap_questions_job ON gap_questions(job_id, created_at)"
+    )
+    
     conn.commit()
     conn.close()
 
