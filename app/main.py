@@ -70,7 +70,31 @@ from app.core.grounded_gap_engine import run_grounded_gap_analysis, save_grounde
 from app.core.grounded_positioning import build_grounded_positioning_brief
 
 def safe_text(x) -> str:
+import re
+
+from app.core.grounded_positioning import build_grounded_positioning_brief
+
+
+def safe_text(x) -> str:
     return "" if x is None else str(x)
+
+
+def slugify_filename(s: str, max_len: int = 60) -> str:
+    s = safe_text(s).strip().lower()
+    s = re.sub(r"[^a-z0-9]+", "_", s)
+    s = re.sub(r"_+", "_", s).strip("_")
+    return (s[:max_len] or "unknown")
+
+
+def dl_name(company: str, base: str, ext: str = "txt") -> str:
+    c = slugify_filename(company)
+    b = slugify_filename(base)
+    return f"{c}__{b}.{ext}"
+
+
+def append_job_description_block(content: str, company: str, job_desc: str) -> str:
+    header = f"\n\n{'='*80}\nJOB DESCRIPTION REFERENCE — {safe_text(company)}\n{'='*80}\n\n"
+    return f"{content.strip()}{header}{safe_text(job_desc).strip()}\n"
 
 
 def _call_scorer(fn, resume_text: str, job_text: str, min_base: int):
