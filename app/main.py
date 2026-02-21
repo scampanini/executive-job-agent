@@ -69,7 +69,6 @@ from app.core.grounded_positioning import build_grounded_positioning_brief
 
 import re
 
-
 def safe_text(x) -> str:
     return "" if x is None else str(x)
 
@@ -95,12 +94,13 @@ def append_job_description_block(content: str, company: str, job_desc: str) -> s
 def grounded_has_gaps(gap_result: dict | None) -> bool:
     if not gap_result:
         return True
-
     return bool(
         (gap_result.get("hard_gaps") or [])
         or (gap_result.get("partial_gaps") or [])
         or (gap_result.get("signal_gaps") or [])
     )
+
+
 def _call_scorer(fn, resume_text: str, job_text: str, min_base: int):
     # Try a few possible signatures to stay compatible with your scoring.py
     for args, kwargs in [
