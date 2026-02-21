@@ -62,11 +62,9 @@ from app.core.grounded_gap_engine import (
     save_grounded_gap_result,
     load_grounded_gap_result,
 )
-from app.core.grounded_gap_engine import load_grounded_gap_result
 from app.core.job_resume_fetch import get_job_description, get_resume_text
 from app.core.portfolio_store import get_portfolio_texts, save_portfolio_item
 from app.core.build_evidence_cache import build_evidence_cache_for_job
-from app.core.grounded_gap_engine import run_grounded_gap_analysis, save_grounded_gap_result
 from app.core.grounded_positioning import build_grounded_positioning_brief
 
 import re
