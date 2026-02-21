@@ -67,6 +67,7 @@ from app.core.job_resume_fetch import get_job_description, get_resume_text
 from app.core.portfolio_store import get_portfolio_texts, save_portfolio_item
 from app.core.build_evidence_cache import build_evidence_cache_for_job
 from app.core.grounded_gap_engine import run_grounded_gap_analysis, save_grounded_gap_result
+from app.core.grounded_positioning import build_grounded_positioning_brief
 
 def safe_text(x) -> str:
     return "" if x is None else str(x)
@@ -812,7 +813,17 @@ else:
             st.subheader("🔎 Grounded Gap Analysis")
             conn = get_conn()
             res = load_grounded_gap_result(conn=conn, resume_id=int(resume_id), job_id=int(job_id))
+            col1, col2 = st.columns([1, 3])
+            if res and col1.button("Generate grounded positioning brief", key=f"posbrief_{pid}"):
+                header_txt = f"{safe_text(it.get('title'))} @ {safe_text(it.get('company'))}"
+                brief = build_grounded_positioning_brief(header=header_txt, gap_result=res or {})
+                st.session_state[f"posbrief_text_{pid}"] = brief
+                st.toast("Positioning brief generated")
 
+            brief_text = st.session_state.get(f"posbrief_text_{pid}")
+            if brief_text:
+                with st.expander("🧭 Grounded Positioning Brief", expanded=False):
+                    st.markdown(brief_text)
             if not res:
                 st.info("No grounded gap analysis found yet for this role. Click Run to generate it.")
             else:
