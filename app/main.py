@@ -96,6 +96,20 @@ def append_job_description_block(content: str, company: str, job_desc: str) -> s
     header = f"\n\n{'='*80}\nJOB DESCRIPTION REFERENCE — {safe_text(company)}\n{'='*80}\n\n"
     return f"{content.strip()}{header}{safe_text(job_desc).strip()}\n"
 
+def append_job_description_block(content: str, company: str, job_desc: str) -> str:
+    header = f"\n\n{'='*80}\nJOB DESCRIPTION REFERENCE — {safe_text(company)}\n{'='*80}\n\n"
+    return f"{content.strip()}{header}{safe_text(job_desc).strip()}\n"
+
+
+def grounded_has_gaps(gap_result: dict | None) -> bool:
+    if not gap_result:
+        return True  # safe default if no result yet
+
+    return bool(
+        (gap_result.get("hard_gaps") or [])
+        or (gap_result.get("partial_gaps") or [])
+        or (gap_result.get("signal_gaps") or [])
+    )
 
 def _call_scorer(fn, resume_text: str, job_text: str, min_base: int):
     # Try a few possible signatures to stay compatible with your scoring.py
@@ -341,10 +355,6 @@ if run:
         url=url or None,
     )
 
-    updated = attach_unlinked_gap_questions_to_job(job_id=job_id, limit=50)
-    if updated:
-        st.info(f"Linked {updated} open gap questions to this job record.")
-
     resume_id = save_resume(source=resume_source or "upload", raw_text=resume_text)
 
     # --- Phase 3C: grounded gap engine (deterministic) ---
@@ -373,13 +383,25 @@ if run:
     save_grounded_gap_result(conn=conn, resume_id=resume_id, job_id=job_id, result=gap_result)
     # --- end Phase 3C ---
 
-    answered = list_gap_questions(job_id=job_id, unanswered_only=False, limit=50)
-    answered_pairs = []
-    for item in answered:
-        if item.get("answer"):
-            answered_pairs.append(f"Q: {item['question']}\nA: {item['answer']}")
-    gap_answers_text = "\n\n".join(answered_pairs)
+    use_gap_questions = grounded_has_gaps(gap_result)
 
+    if use_gap_questions:
+        updated = attach_unlinked_gap_questions_to_job(job_id=job_id, limit=50)
+        if updated:
+            st.info(f"Linked {updated} open gap questions to this job record.")
+    else:
+        st.info("No grounded gaps detected — skipping gap questions.")
+
+    gap_answers_text = ""
+    if use_gap_questions:
+        answered = list_gap_questions(job_id=job_id, unanswered_only=False, limit=50)
+        answered_pairs = []
+        for item in answered:
+            if item.get("answer"):
+                answered_pairs.append(f"Q: {item['question']}\nA: {item['answer']}")
+        gap_answers_text = "\n\n".join(answered_pairs)
+
+    result, model_used = score_role(
     result, model_used = score_role(
         resume_text,
         job_desc,
