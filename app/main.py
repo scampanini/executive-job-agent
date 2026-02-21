@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 from collections import Counter
 from app.core.storage import get_setting, set_setting, save_document, create_gap_question, list_gap_questions, answer_gap_question, attach_unlinked_gap_questions_to_job, save_job
+from app.core.job_resume_fetch import get_job_description
 
 # Headless-safe matplotlib for Render (must be before pyplot)
 import matplotlib
@@ -501,6 +502,18 @@ if tailor:
                 file_name=dl_name(company_for_file, "tailored_resume", "txt"),
                 mime="text/plain",
             )
+
+with st.expander("📄 Job description (saved)", expanded=False):
+    jd_show = ""
+    job_id_show = st.session_state.get("last_job_id")
+    if job_id_show is not None:
+        try:
+            conn = get_conn()
+            jd_show = get_job_description(conn, int(job_id_show))
+        except Exception:
+            jd_show = ""
+    st.text_area("Job description", value=jd_show, height=260)
+
 st.divider()
 
 # -------------------------
