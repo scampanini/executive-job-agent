@@ -392,7 +392,6 @@ if run:
         gap_answers_text = "\n\n".join(answered_pairs)
 
     result, model_used = score_role(
-    result, model_used = score_role(
         resume_text,
         job_desc,
         use_ai=use_ai,
