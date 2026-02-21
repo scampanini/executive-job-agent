@@ -392,35 +392,7 @@ if run:
         c2.metric("Partial gaps", len(gap_result.get("partial_gaps") or []))
         c3.metric("Signal gaps", len(gap_result.get("signal_gaps") or []))
 
-        with st.expander("Details (matched / partial / hard / signals)", expanded=False):
-            st.markdown("### 🟩 Strong alignments")
-            for it2 in (gap_result.get("matched_requirements") or [])[:25]:
-                st.write(f"- {safe_text(it2.get('text'))}")
-
-            st.markdown("### 🟨 Partial gaps")
-            for it2 in (gap_result.get("partial_gaps") or [])[:25]:
-                st.write(f"- {safe_text(it2.get('text'))}")
-
-            st.markdown("### 🟥 Hard gaps")
-            for it2 in (gap_result.get("hard_gaps") or [])[:25]:
-                st.write(f"- {safe_text(it2.get('text'))}")
-
-            st.markdown("### 🟦 Signal gaps")
-            for it2 in (gap_result.get("signal_gaps") or [])[:25]:
-                st.write(f"- {safe_text(it2.get('text'))}")
-    # --- end show grounded gap analysis ---
-
     use_gap_questions = grounded_has_gaps(gap_result)
-        if use_gap_questions:
-        st.subheader("❓ Gap Questions (only when gaps exist)")
-        qs = list_gap_questions(job_id=job_id, unanswered_only=True, limit=20)
-        if not qs:
-            st.caption("No unanswered gap questions yet.")
-        else:
-            for q in qs:
-                st.write(f"- {safe_text(q.get('question'))}")
-    else:
-        st.caption("No grounded gaps detected — gap questions hidden.")
 
     if use_gap_questions:
         updated = attach_unlinked_gap_questions_to_job(job_id=job_id, limit=50)
@@ -437,7 +409,6 @@ if run:
             if item.get("answer"):
                 answered_pairs.append(f"Q: {item['question']}\nA: {item['answer']}")
         gap_answers_text = "\n\n".join(answered_pairs)
-
     result, model_used = score_role(
         resume_text,
         job_desc,
