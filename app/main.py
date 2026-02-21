@@ -69,10 +69,7 @@ from app.core.build_evidence_cache import build_evidence_cache_for_job
 from app.core.grounded_gap_engine import run_grounded_gap_analysis, save_grounded_gap_result
 from app.core.grounded_positioning import build_grounded_positioning_brief
 
-def safe_text(x) -> str:
 import re
-
-from app.core.grounded_positioning import build_grounded_positioning_brief
 
 
 def safe_text(x) -> str:
@@ -96,21 +93,16 @@ def append_job_description_block(content: str, company: str, job_desc: str) -> s
     header = f"\n\n{'='*80}\nJOB DESCRIPTION REFERENCE — {safe_text(company)}\n{'='*80}\n\n"
     return f"{content.strip()}{header}{safe_text(job_desc).strip()}\n"
 
-def append_job_description_block(content: str, company: str, job_desc: str) -> str:
-    header = f"\n\n{'='*80}\nJOB DESCRIPTION REFERENCE — {safe_text(company)}\n{'='*80}\n\n"
-    return f"{content.strip()}{header}{safe_text(job_desc).strip()}\n"
-
 
 def grounded_has_gaps(gap_result: dict | None) -> bool:
     if not gap_result:
-        return True  # safe default if no result yet
+        return True
 
     return bool(
         (gap_result.get("hard_gaps") or [])
         or (gap_result.get("partial_gaps") or [])
         or (gap_result.get("signal_gaps") or [])
     )
-
 def _call_scorer(fn, resume_text: str, job_text: str, min_base: int):
     # Try a few possible signatures to stay compatible with your scoring.py
     for args, kwargs in [
