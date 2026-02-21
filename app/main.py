@@ -475,8 +475,12 @@ if tailor:
 
             st.download_button(
                 "Download tailored résumé (TXT)",
-                data=final_text.encode("utf-8"),
-                file_name="tailored_resume.txt",
+                data=append_job_description_block(
+                    tailored_resume_text,
+                    company,
+                    job_desc,
+                ).encode("utf-8"),
+                file_name=dl_name(company, "tailored_resume", "txt"),
                 mime="text/plain",
             )
 
@@ -502,10 +506,17 @@ if brief:
 memo = st.session_state.get("last_positioning_brief")
 if memo:
     st.text_area("Positioning brief", value=memo, height=460)
+
+    full_text = append_job_description_block(
+        memo,
+        company,
+        job_desc,
+    )
+
     st.download_button(
         "Download positioning brief (TXT)",
-        data=memo.encode("utf-8"),
-        file_name="positioning_brief.txt",
+        data=full_text.encode("utf-8"),
+        file_name=dl_name(company, "executive_positioning_brief", "txt"),
         mime="text/plain",
     )
 
@@ -555,10 +566,16 @@ else:
         + "\n\nFIRST-CALL TALKING POINTS\n\n" + call_text
     )
 
+    full_outreach = append_job_description_block(
+        bundle,
+        company,
+        job_desc,
+    )
+
     st.download_button(
         "Download outreach kit (TXT)",
-        data=bundle.encode("utf-8"),
-        file_name="recruiter_outreach_kit.txt",
+        data=full_outreach.encode("utf-8"),
+        file_name=dl_name(company, "recruiter_outreach_kit", "txt"),
         mime="text/plain",
     )
 
