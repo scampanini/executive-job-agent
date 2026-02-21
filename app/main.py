@@ -63,6 +63,10 @@ from app.core.grounded_gap_engine import (
     load_grounded_gap_result,
 )
 from app.core.grounded_gap_engine import load_grounded_gap_result
+from app.core.job_resume_fetch import get_job_description, get_resume_text
+from app.core.portfolio_store import get_portfolio_texts, save_portfolio_item
+from app.core.build_evidence_cache import build_evidence_cache_for_job
+from app.core.grounded_gap_engine import run_grounded_gap_analysis, save_grounded_gap_result
 
 def safe_text(x) -> str:
     return "" if x is None else str(x)
@@ -753,6 +757,7 @@ else:
                     if portfolio_paste.strip():
                         conn = get_conn()
                         ensure_grounded_gap_tables(conn)
+
                         save_portfolio_item(
                             conn=conn,
                             resume_id=int(resume_id),
@@ -761,7 +766,45 @@ else:
                             source_name="Portfolio (pasted)",
                             source_type="paste",
                         )
-                        st.success("Saved portfolio text for this role. Re-run scoring to refresh grounded gaps.")
+
+                        # Auto-refresh grounded gaps immediately
+                        jd_text = get_job_description(conn, int(job_id))
+                        res_text = get_resume_text(conn, int(resume_id))
+                        portfolio_texts = get_portfolio_texts(
+                            conn=conn,
+                            resume_id=int(resume_id),
+                            job_id=int(job_id),
+                            limit=50,
+                        )
+
+                        if jd_text.strip() and res_text.strip():
+                            build_evidence_cache_for_job(
+                                conn=conn,
+                                resume_id=int(resume_id),
+                                job_id=int(job_id),
+                                resume_text=res_text,
+                                portfolio_texts=portfolio_texts,
+                            )
+
+                            gap_result = run_grounded_gap_analysis(
+                                conn=conn,
+                                resume_id=int(resume_id),
+                                job_id=int(job_id),
+                                job_description=jd_text,
+                            )
+
+                            save_grounded_gap_result(
+                                conn=conn,
+                                resume_id=int(resume_id),
+                                job_id=int(job_id),
+                                result=gap_result,
+                            )
+
+                            st.success("Saved portfolio text and refreshed grounded gaps.")
+                            st.cache_data.clear()
+                            st.rerun()
+                        else:
+                            st.warning("Saved portfolio text, but could not refresh (missing stored résumé or JD text).")
                     else:
                         st.warning("Paste something first.")
 
