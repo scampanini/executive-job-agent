@@ -3,6 +3,7 @@ import math
 import sqlite3
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.core.semantic_match import semantic_enabled, semantic_similarity
 from app.core.grounded_extract import EvidenceItem, extract_requirements_deterministic, load_evidence_index, tag_and_extract_signals
 
 
@@ -39,7 +40,9 @@ def _best_evidence_for_requirement(
     top_k: int = 3,
 ) -> List[Tuple[EvidenceItem, float, str]]:
     """
-    Returns list of (evidence_item, score, rationale).
+    Hybrid matcher:
+      - base deterministic: token Jaccard + tag overlap + evidence confidence
+      - optional semantic re-rank on top candidates using embeddings (if enabled)
     """
     req_tokens = _tokenize(req_text)
     req_tags, _, _, _ = tag_and_extract_signals(req_text)
@@ -51,8 +54,8 @@ def _best_evidence_for_requirement(
         tok_sim = _jaccard(req_tokens, ev_tokens)
 
         ev_tag_set = set(e.tags)
-        tag_bonus = 0.0
         tag_overlap = req_tag_set.intersection(ev_tag_set)
+        tag_bonus = 0.0
         if tag_overlap:
             tag_bonus = 0.20 + min(0.20, 0.05 * len(tag_overlap))
 
@@ -64,16 +67,40 @@ def _best_evidence_for_requirement(
         if score <= 0.05:
             continue
 
-        rationale = []
+        rationale_parts = []
         if tok_sim >= 0.10:
-            rationale.append(f"token_overlap={tok_sim:.2f}")
+            rationale_parts.append(f"token_overlap={tok_sim:.2f}")
         if tag_overlap:
-            rationale.append(f"tags={sorted(tag_overlap)}")
+            rationale_parts.append(f"tags={sorted(tag_overlap)}")
         if e.confidence >= 0.6:
-            rationale.append("strong_signal")
-        scored.append((e, score, "; ".join(rationale) if rationale else "weak_match"))
+            rationale_parts.append("strong_signal")
+
+        scored.append((e, score, "; ".join(rationale_parts) if rationale_parts else "weak_match"))
 
     scored.sort(key=lambda x: x[1], reverse=True)
+
+    # Optional semantic re-rank
+    if semantic_enabled() and scored:
+        N = min(30, len(scored))
+        candidates = [scored[i][0].chunk_text for i in range(N)]
+        sims = semantic_similarity(req_text, candidates)
+
+        if sims is not None:
+            sim_by_idx = {i: s for (i, s) in sims}
+            blended: List[Tuple[EvidenceItem, float, str]] = []
+
+            for i in range(N):
+                e, base, rat = scored[i]
+                sem = max(0.0, min(1.0, float(sim_by_idx.get(i, 0.0))))
+                new_score = float(min(1.25, base + 0.35 * sem))
+                new_rat = rat + f"; semantic={sem:.2f}"
+                blended.append((e, new_score, new_rat))
+
+            tail = scored[N:]
+            blended.sort(key=lambda x: x[1], reverse=True)
+            scored = blended + tail
+            scored.sort(key=lambda x: x[1], reverse=True)
+
     return scored[:top_k]
 
 
