@@ -484,17 +484,21 @@ if tailor:
             final_text = safe_text(tailored.get("final_resume_text")) or ""
             st.text_area("Tailored résumé text", value=final_text, height=420)
 
-            st.download_button(
-                "Download tailored résumé (TXT)",
-                data=append_job_description_block(
-                    tailored_resume_text,
-                    company,
-                    job_desc,
-                ).encode("utf-8"),
-                file_name=dl_name(company, "tailored_resume", "txt"),
-                mime="text/plain",
-            )
-
+            tailored_resume_text = st.session_state.get("last_tailored_resume")
+                tailored_resume_text = st.session_state.get("last_tailored_resume")
+                    if tailored_resume_text:
+                        st.download_button(
+                            "Download tailored résumé (TXT)",
+                            data=append_job_description_block(
+                                tailored_resume_text,
+                                company,
+                                job_desc,
+                            ).encode("utf-8"),
+                            file_name=dl_name(company, "tailored_resume", "txt"),
+                            mime="text/plain",
+                        )
+                    else:
+                        st.caption("No tailored résumé generated yet.")
 st.divider()
 
 # -------------------------
