@@ -328,77 +328,53 @@ if run:
     save_score(job_id=job_id, resume_id=resume_id, result=result, model=model_used)
 
     # Session state for downstream tools
-job_id = locals().get("job_id")
-resume_id = locals().get("resume_id")
+    st.session_state["last_resume_text"] = resume_text
+    st.session_state["last_job_text"] = job_desc
+    st.session_state["last_company"] = company or ""
+    st.session_state["last_title"] = title or ""
+    st.session_state["last_job_id"] = job_id
+    st.session_state["last_score_result"] = result
+    
+    # Readable output
+    if isinstance(result, dict) and result.get("error"):
+        st.warning(result["error"])
 
-if job_id and resume_id:
-    save_score(job_id=job_id, resume_id=resume_id, result=result, model=model_used)
+    if not isinstance(result, dict):
+        st.write(result)
+    else:
+        overall = result.get("overall_score") or result.get("total_score") or result.get("score")
+        priority = result.get("priority")
 
-result, model_used = score_role(
-    resume_text, 
-    job_desc, 
-    use_ai=use_ai, min_base=min_base,
-)
+        st.subheader("Fit score")
 
-save_score(
-    job_id=job_id,
-    resume_id=resume_id,
-    result=result,
-    model=model_used,
-)
+        if overall is not None:
+            st.metric("Overall Score", overall)
 
-# Session state for downstream tools
-st.session_state["last_resume_text"] = resume_text
-st.session_state["last_job_text"] = job_desc
-st.session_state["last_company"] = company or ""
-st.session_state["last_title"] = title or ""
-st.session_state["last_job_id"] = job_id
-st.session_state["last_score_result"] = result
+        if priority:
+            st.write(f"Priority: **{priority}**")
 
-st.session_state["last_score_result"] = result
+        def _render_list(title_txt: str, key: str):
+            items = result.get(key) or []
+            if items:
+                st.subheader(title_txt)
+                for x in items:
+                    st.write(f"- {x}")
 
-st.session_state["last_score_result"] = result
+        _render_list("Why this fits", "why_this_fits")
+        _render_list("Risks / gaps", "risks_or_gaps")
+        _render_list("Top résumé edits", "top_resume_edits")
+        _render_list("Interview leverage points", "interview_leverage_points")
 
-# Readable output
-if isinstance(result, dict) and result.get("error"):
-    st.warning(result["error"])
+        pitch = result.get("two_line_pitch")
+        if pitch:
+            st.subheader("Two-line pitch")
+            st.write(pitch)
 
-if not isinstance(result, dict):
-    st.write(result)
-else:
-    overall = result.get("overall_score") or result.get("total_score") or result.get("score")
-    priority = result.get("priority")
+        with st.expander("Full scoring output (debug)", expanded=False):
+            st.json(result)
 
-    st.subheader("Fit score")
-    if overall is not None:
-        st.metric("Overall Score", overall)
-
-    if priority:
-        st.write(f"Priority: **{priority}**")
-
-    def _render_list(title_txt: str, key: str):
-        items = result.get(key) or []
-        if items:
-            st.subheader(title_txt)
-            for x in items:
-                st.write(f"- {x}")
-
-    _render_list("Why this fits", "why_this_fits")
-    _render_list("Risks / gaps", "risks_or_gaps")
-    _render_list("Top résumé edits", "top_resume_edits")
-    _render_list("Interview leverage points", "interview_leverage_points")
-
-    pitch = result.get("two_line_pitch")
-    if pitch:
-        st.subheader("Two-line pitch")
-        st.write(pitch)
-
-    with st.expander("Full scoring output (debug)", expanded=False):
-        st.json(result)
-
-st.info(f"Scoring mode used: {model_used}")
-st.divider()
-
+    st.info(f"Scoring mode used: {model_used}")
+    st.divider()
 # -------------------------
 # Tailored résumé
 # -------------------------
