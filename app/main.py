@@ -727,10 +727,45 @@ else:
         if it.get("notes"):
             st.write(safe_text(it.get("notes")))
 
-        job_id = it.get("job_id")
+                job_id = it.get("job_id")
         resume_id = it.get("resume_id")
+        pid = it.get("pipeline_id")
 
-        if job_id and resume_id:
+        # --- Step 6 + Step 5: Portfolio + Grounded Gap Analysis (per role) ---
+        if job_id is not None and resume_id is not None:
+            # Step 6: Portfolio paste
+            with st.expander("📎 Add portfolio text (press releases, speeches, case studies)", expanded=False):
+                portfolio_paste = st.text_area(
+                    "Paste portfolio text (this will be attached to this role)",
+                    height=160,
+                    key=f"portfolio_paste_{pid}",
+                )
+
+                col_a, col_b = st.columns([1, 2])
+                save_portfolio = col_a.button(
+                    "Save portfolio text",
+                    key=f"portfolio_save_{pid}",
+                    use_container_width=True,
+                )
+                col_b.caption("Tip: Paste 1 artifact at a time (press release, speech, crisis summary).")
+
+                if save_portfolio:
+                    if portfolio_paste.strip():
+                        conn = get_conn()
+                        ensure_grounded_gap_tables(conn)
+                        save_portfolio_item(
+                            conn=conn,
+                            resume_id=int(resume_id),
+                            job_id=int(job_id),
+                            raw_text=portfolio_paste.strip(),
+                            source_name="Portfolio (pasted)",
+                            source_type="paste",
+                        )
+                        st.success("Saved portfolio text for this role. Re-run scoring to refresh grounded gaps.")
+                    else:
+                        st.warning("Paste something first.")
+
+            # Step 5: Grounded gap analysis display
             st.subheader("🔎 Grounded Gap Analysis")
             conn = get_conn()
             res = load_grounded_gap_result(conn=conn, resume_id=int(resume_id), job_id=int(job_id))
@@ -771,7 +806,8 @@ else:
                 render_bucket("🟨 Partial gaps", res.get("partial_gaps", []))
                 render_bucket("🟥 Hard gaps", res.get("hard_gaps", []))
                 render_bucket("🟦 Signal gaps", res.get("signal_gaps", []))
-         
+        # --- end Step 6 + Step 5 ---
+        
         with st.expander("Update this pipeline item", expanded=False):
             new_stage = st.selectbox(
                 "New stage",
