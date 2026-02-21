@@ -727,7 +727,7 @@ else:
         if it.get("notes"):
             st.write(safe_text(it.get("notes")))
 
-                job_id = it.get("job_id")
+        job_id = it.get("job_id")
         resume_id = it.get("resume_id")
         pid = it.get("pipeline_id")
 
