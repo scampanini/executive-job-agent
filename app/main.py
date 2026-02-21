@@ -53,7 +53,16 @@ from app.core.storage import (
     update_pipeline_item,
     list_pipeline_items,
 )
-
+from app.core.db_conn import get_conn
+from app.core.schema_grounded_gap import ensure_grounded_gap_tables
+from app.core.portfolio_store import get_portfolio_texts, save_portfolio_item
+from app.core.build_evidence_cache import build_evidence_cache_for_job
+from app.core.grounded_gap_engine import (
+    run_grounded_gap_analysis,
+    save_grounded_gap_result,
+    load_grounded_gap_result,
+)
+from app.core.grounded_gap_engine import load_grounded_gap_result
 
 def safe_text(x) -> str:
     return "" if x is None else str(x)
@@ -309,6 +318,32 @@ if run:
 
     resume_id = save_resume(source=resume_source or "upload", raw_text=resume_text)
 
+    # --- Phase 3C: grounded gap engine (deterministic) ---
+    conn = get_conn()
+    ensure_grounded_gap_tables(conn)
+
+    portfolio_texts = get_portfolio_texts(
+        conn=conn, resume_id=resume_id, job_id=job_id, limit=50
+    )
+
+    build_evidence_cache_for_job(
+        conn=conn,
+        resume_id=resume_id,
+        job_id=job_id,
+        resume_text=resume_text,
+        portfolio_texts=portfolio_texts,
+    )
+
+    gap_result = run_grounded_gap_analysis(
+        conn=conn,
+        resume_id=resume_id,
+        job_id=job_id,
+        job_description=job_desc,
+    )
+
+    save_grounded_gap_result(conn=conn, resume_id=resume_id, job_id=job_id, result=gap_result)
+    # --- end Phase 3C ---
+
     answered = list_gap_questions(job_id=job_id, unanswered_only=False, limit=50)
     answered_pairs = []
     for item in answered:
@@ -326,7 +361,7 @@ if run:
     )
 
     save_score(job_id=job_id, resume_id=resume_id, result=result, model=model_used)
-
+    
     # Session state for downstream tools
     st.session_state["last_resume_text"] = resume_text
     st.session_state["last_job_text"] = job_desc
@@ -692,6 +727,51 @@ else:
         if it.get("notes"):
             st.write(safe_text(it.get("notes")))
 
+        job_id = it.get("job_id")
+        resume_id = it.get("resume_id")
+
+        if job_id and resume_id:
+            st.subheader("🔎 Grounded Gap Analysis")
+            conn = get_conn()
+            res = load_grounded_gap_result(conn=conn, resume_id=int(resume_id), job_id=int(job_id))
+
+            if not res:
+                st.info("No grounded gap analysis found yet for this role. Click Run to generate it.")
+            else:
+                st.write(res.get("summary", ""))
+                st.metric("Alignment Score", f"{res.get('overall_alignment_score', 0)}/100")
+
+                def render_bucket(title: str, items: list[dict]):
+                    with st.expander(f"{title} ({len(items)})", expanded=title.startswith("🟥")):
+                        for it2 in items:
+                            st.markdown(f"**{it2['text']}**")
+                            st.caption(
+                                f"Competency: {it2.get('competency')} | Match: {it2.get('match_strength_pct')}%"
+                            )
+
+                            ev = it2.get("evidence") or []
+                            if ev:
+                                st.markdown("**Evidence**")
+                                for e in ev:
+                                    st.code(e.get("quote", ""), language="text")
+                                    st.caption(
+                                        f"{e.get('source_type')} · {e.get('source_name')} · {e.get('rationale')}"
+                                    )
+                            else:
+                                st.warning("No supporting evidence found in résumé/portfolio cache.")
+
+                            q = (it2.get("followup_question") or "").strip()
+                            if q:
+                                st.markdown("**Follow-up question**")
+                                st.write(q)
+
+                            st.divider()
+
+                render_bucket("🟩 Strong alignments", res.get("matched_requirements", []))
+                render_bucket("🟨 Partial gaps", res.get("partial_gaps", []))
+                render_bucket("🟥 Hard gaps", res.get("hard_gaps", []))
+                render_bucket("🟦 Signal gaps", res.get("signal_gaps", []))
+         
         with st.expander("Update this pipeline item", expanded=False):
             new_stage = st.selectbox(
                 "New stage",
