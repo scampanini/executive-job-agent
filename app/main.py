@@ -345,6 +345,10 @@ if run:
         url=url or None,
     )
 
+    # Persist latest JD + company for downloads
+    st.session_state["last_job_desc"] = job_desc
+    st.session_state["last_company"] = company or ""
+
     resume_id = save_resume(source=resume_source or "upload", raw_text=resume_text)
 
     # --- Phase 3C: grounded gap engine (deterministic) ---
@@ -484,17 +488,19 @@ if tailor:
             final_text = safe_text(tailored.get("final_resume_text")) or ""
             st.text_area("Tailored résumé text", value=final_text, height=420)
             
+            company_for_file = st.session_state.get("last_company", "")
+            job_desc_for_file = st.session_state.get("last_job_desc", "")
+            
             st.download_button(
                 "Download tailored résumé (TXT)",
                 data=append_job_description_block(
                     final_text,
-                    company,
-                    job_desc,
+                    company_for_file,
+                    job_desc_for_file,
                 ).encode("utf-8"),
-                file_name=dl_name(company, "tailored_resume", "txt"),
+                file_name=dl_name(company_for_file, "tailored_resume", "txt"),
                 mime="text/plain",
             )
-
 st.divider()
 
 # -------------------------
