@@ -116,6 +116,33 @@ def _classify(match_strength: float, must_have: bool) -> str:
 def _to_pct(x: float) -> int:
     return int(round(max(0.0, min(1.0, x)) * 100))
 
+def _recompute_overall_from_results(results):
+    total_weight = 0.0
+    score_accum = 0.0
+
+    for r in results or []:
+        weight = float(r.get("weight") or 0.0)
+        classification = (r.get("classification") or "signal_gap").strip()
+
+        # Mirror your existing scoring logic exactly
+        if classification == "match":
+            contrib = 1.0
+        elif classification == "partial":
+            contrib = 0.5
+        elif classification == "gap":
+            contrib = -0.25
+        else:
+            contrib = 0.0
+
+        total_weight += weight
+        score_accum += contrib * weight
+
+    if total_weight <= 0:
+        return 0
+
+    raw = score_accum / float(total_weight)  # roughly -0.25..1.0
+    overall = int(round((raw + 0.25) / 1.25 * 100))
+    return max(0, min(100, overall))
 
 def run_grounded_gap_analysis(
     conn: sqlite3.Connection,
@@ -251,6 +278,9 @@ def run_grounded_gap_analysis(
         gap_result,
         resume_text=resume_text,
     )
+
+    # ✅ Phase 4A(3): recompute overall AFTER overrides (keeps score consistent with corrected classifications)
+    gap_result["overall_alignment_score"] = _recompute_overall_from_results(gap_result["all_results"])
     
     # ✅ Phase 4A(2): rebuild buckets + summary AFTER overrides
     gap_result = rebucket_gap_result(gap_result)
