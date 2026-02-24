@@ -375,7 +375,21 @@ if run:
         job_description=job_desc,
     )
 
-    save_grounded_gap_result(conn=conn, resume_id=resume_id, job_id=job_id, result=gap_result)
+    # Optional debug display
+    show_debug = st.checkbox("Show grounded debug JSON", value=False)
+
+    if show_debug:
+        with st.expander("🔬 DEBUG – Full grounded gap_result", expanded=False):
+            st.json(gap_result)
+
+    # Always save the grounded result
+    save_grounded_gap_result(
+        conn=conn,
+        resume_id=resume_id,
+        job_id=job_id,
+        result=gap_result
+    )
+
     # --- end Phase 3C ---
 
     # --- Show grounded gap analysis immediately (this run) ---
