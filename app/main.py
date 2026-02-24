@@ -329,6 +329,10 @@ with col_r:
 with st.form("score_role_form"):
     run = st.form_submit_button("Score role")
 
+# --- Display controls (persist across reruns) ---
+show_debug = st.checkbox("Show grounded debug JSON", value=False)
+
+# --- Run pipeline ---
 if run:
     if not resume_text.strip():
         st.error("Please upload your résumé first.")
@@ -338,6 +342,7 @@ if run:
         st.error("Please paste a job description.")
         st.stop()
 
+    # Save job
     job_id = save_job(
         description=job_desc,
         company=company or None,
@@ -346,18 +351,27 @@ if run:
         url=url or None,
     )
 
-    # Persist latest JD + company for downloads
+    # Persist JD + company
     st.session_state["last_job_desc"] = job_desc
     st.session_state["last_company"] = company or ""
+    st.session_state["last_job_id"] = job_id
 
-    resume_id = save_resume(source=resume_source or "upload", raw_text=resume_text)
+    # Save resume
+    resume_id = save_resume(
+        source=resume_source or "upload",
+        raw_text=resume_text
+    )
+    st.session_state["last_resume_id"] = resume_id
 
     # --- Phase 3C: grounded gap engine (deterministic) ---
     conn = get_conn()
     ensure_grounded_gap_tables(conn)
 
     portfolio_texts = get_portfolio_texts(
-        conn=conn, resume_id=resume_id, job_id=job_id, limit=50
+        conn=conn,
+        resume_id=resume_id,
+        job_id=job_id,
+        limit=50
     )
 
     build_evidence_cache_for_job(
@@ -375,14 +389,14 @@ if run:
         job_description=job_desc,
     )
 
-    # Optional debug display
-    show_debug = st.checkbox("Show grounded debug JSON", value=False)
+    # Persist grounded result for reruns
+    st.session_state["last_gap_result"] = gap_result
 
-    if show_debug:
-        with st.expander("🔬 DEBUG – Full grounded gap_result", expanded=False):
-            st.json(gap_result)
+    # Persist whether gaps exist
+    use_gap_questions = bool(gap_result) and grounded_has_gaps(gap_result)
+    st.session_state["last_use_gap_questions"] = use_gap_questions
 
-    # Always save the grounded result
+    # Save grounded result to DB
     save_grounded_gap_result(
         conn=conn,
         resume_id=resume_id,
@@ -390,39 +404,29 @@ if run:
         result=gap_result
     )
 
-    # --- end Phase 3C ---
-
-    # --- Show grounded gap analysis immediately (this run) ---
-    st.subheader("🔎 Grounded Gap Analysis (this run)")
-
-    if not gap_result:
-        st.info("No grounded gap result generated.")
-    else:
-        st.write(gap_result.get("summary", ""))
-        st.metric("Alignment Score", f"{gap_result.get('overall_alignment_score', 0)}/100")
-
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Hard gaps", len(gap_result.get("hard_gaps") or []))
-        c2.metric("Partial gaps", len(gap_result.get("partial_gaps") or []))
-        c3.metric("Signal gaps", len(gap_result.get("signal_gaps") or []))
-
-    use_gap_questions = grounded_has_gaps(gap_result)
-
+    # Attach gap questions (run-only side effect)
     if use_gap_questions:
         updated = attach_unlinked_gap_questions_to_job(job_id=job_id, limit=50)
         if updated:
             st.info(f"Linked {updated} open gap questions to this job record.")
-    else:
-        st.info("No grounded gaps detected — skipping gap questions.")
 
+    # Prepare gap answers for blended scoring
     gap_answers_text = ""
     if use_gap_questions:
-        answered = list_gap_questions(job_id=job_id, unanswered_only=False, limit=50)
+        answered = list_gap_questions(
+            job_id=job_id,
+            unanswered_only=False,
+            limit=50
+        )
         answered_pairs = []
         for item in answered:
             if item.get("answer"):
-                answered_pairs.append(f"Q: {item['question']}\nA: {item['answer']}")
+                answered_pairs.append(
+                    f"Q: {item['question']}\nA: {item['answer']}"
+                )
         gap_answers_text = "\n\n".join(answered_pairs)
+
+    # Run blended scoring model
     result, model_used = score_role(
         resume_text,
         job_desc,
@@ -432,7 +436,42 @@ if run:
         gap_answers_text=gap_answers_text,
     )
 
-    save_score(job_id=job_id, resume_id=resume_id, result=result, model=model_used)
+    st.session_state["last_score_result"] = result
+    st.session_state["last_model_used"] = model_used
+
+    save_score(
+        job_id=job_id,
+        resume_id=resume_id,
+        result=result,
+        model=model_used
+    )
+
+# --- Display grounded results (persisted across reruns) ---
+gap_result_ui = st.session_state.get("last_gap_result")
+use_gap_questions_ui = st.session_state.get("last_use_gap_questions", False)
+
+if show_debug and gap_result_ui:
+    with st.expander("🔬 DEBUG – Full grounded gap_result", expanded=False):
+        st.json(gap_result_ui)
+
+st.subheader("🔎 Grounded Gap Analysis (latest)")
+
+if not gap_result_ui:
+    st.info("No grounded gap result generated yet. Click Run.")
+else:
+    st.write(gap_result_ui.get("summary", ""))
+    st.metric(
+        "Alignment Score",
+        f"{gap_result_ui.get('overall_alignment_score', 0)}/100"
+    )
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Hard gaps", len(gap_result_ui.get("hard_gaps") or []))
+    c2.metric("Partial gaps", len(gap_result_ui.get("partial_gaps") or []))
+    c3.metric("Signal gaps", len(gap_result_ui.get("signal_gaps") or []))
+
+    if not use_gap_questions_ui:
+        st.info("No grounded gaps detected — skipping gap questions.")
     
     # Session state for downstream tools
     st.session_state["last_resume_text"] = resume_text
