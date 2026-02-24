@@ -149,6 +149,7 @@ def run_grounded_gap_analysis(
     resume_id: int,
     job_id: int,
     job_description: str,
+    resume_text: str,
     evidence_limit: int = 5000,
 ) -> Dict[str, Any]:
     """
