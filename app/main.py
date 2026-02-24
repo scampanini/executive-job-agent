@@ -384,6 +384,7 @@ if run:
         resume_id=resume_id,
         job_id=job_id,
         job_description=job_desc,
+        resume_text=resume_text,
     )
 
     # Persist grounded results
