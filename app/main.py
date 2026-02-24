@@ -332,7 +332,6 @@ with st.form("score_role_form"):
 # --- Display controls (persist across reruns) ---
 show_debug = st.checkbox("Show grounded debug JSON", value=False)
 
-# --- Run pipeline ---
 if run:
     if not resume_text.strip():
         st.error("Please upload your résumé first.")
@@ -351,21 +350,17 @@ if run:
         url=url or None,
     )
 
-    st.session_state["last_job_id"] = job_id
-
-    # Persist JD + company
-    st.session_state["last_job_desc"] = job_desc
-    st.session_state["last_company"] = company or ""
-
-
     # Save resume
     resume_id = save_resume(
         source=resume_source or "upload",
         raw_text=resume_text
     )
+
+    # Persist identifiers
+    st.session_state["last_job_id"] = job_id
     st.session_state["last_resume_id"] = resume_id
 
-    # --- Phase 3C: grounded gap engine (deterministic) ---
+    # --- Phase 3C: grounded gap engine ---
     conn = get_conn()
     ensure_grounded_gap_tables(conn)
 
@@ -391,14 +386,13 @@ if run:
         job_description=job_desc,
     )
 
-    # Persist grounded result for reruns
+    # Persist grounded results
     st.session_state["last_gap_result"] = gap_result
 
-    # Persist whether gaps exist
     use_gap_questions = bool(gap_result) and grounded_has_gaps(gap_result)
     st.session_state["last_use_gap_questions"] = use_gap_questions
 
-    # Save grounded result to DB
+    # Save grounded result
     save_grounded_gap_result(
         conn=conn,
         resume_id=resume_id,
@@ -406,13 +400,11 @@ if run:
         result=gap_result
     )
 
-    # Attach gap questions (run-only side effect)
+    # Attach gap questions (side effect only during run)
     if use_gap_questions:
-        updated = attach_unlinked_gap_questions_to_job(job_id=job_id, limit=50)
-        if updated:
-            st.info(f"Linked {updated} open gap questions to this job record.")
+        attach_unlinked_gap_questions_to_job(job_id=job_id, limit=50)
 
-    # Prepare gap answers for blended scoring
+    # Build gap answer text
     gap_answers_text = ""
     if use_gap_questions:
         answered = list_gap_questions(
@@ -428,7 +420,7 @@ if run:
                 )
         gap_answers_text = "\n\n".join(answered_pairs)
 
-    # Run blended scoring model
+    # --- Blended scoring ---
     result, model_used = score_role(
         resume_text,
         job_desc,
@@ -438,9 +430,15 @@ if run:
         gap_answers_text=gap_answers_text,
     )
 
+    # Persist for reruns
+    st.session_state["last_resume_text"] = resume_text
+    st.session_state["last_job_text"] = job_desc
+    st.session_state["last_company"] = company or ""
+    st.session_state["last_title"] = title or ""
     st.session_state["last_score_result"] = result
     st.session_state["last_model_used"] = model_used
 
+    # Save blended score
     save_score(
         job_id=job_id,
         resume_id=resume_id,
@@ -451,6 +449,7 @@ if run:
 # --- Display grounded results (persisted across reruns) ---
 gap_result_ui = st.session_state.get("last_gap_result")
 use_gap_questions_ui = st.session_state.get("last_use_gap_questions", False)
+result_ui = st.session_state.get("last_score_result")
 
 if show_debug and gap_result_ui:
     with st.expander("🔬 DEBUG – Full grounded gap_result", expanded=False):
@@ -462,10 +461,7 @@ if not gap_result_ui:
     st.info("No grounded gap result generated yet. Click Run.")
 else:
     st.write(gap_result_ui.get("summary", ""))
-    st.metric(
-        "Alignment Score",
-        f"{gap_result_ui.get('overall_alignment_score', 0)}/100"
-    )
+    st.metric("Alignment Score", f"{gap_result_ui.get('overall_alignment_score', 0)}/100")
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Hard gaps", len(gap_result_ui.get("hard_gaps") or []))
@@ -474,54 +470,52 @@ else:
 
     if not use_gap_questions_ui:
         st.info("No grounded gaps detected — skipping gap questions.")
+
+# --- Display blended score (latest) ---
+st.subheader("Fit score")
+
+if result_ui is None:
+    st.info("No score generated yet. Click Run.")
+elif isinstance(result_ui, dict) and result_ui.get("error"):
+    st.warning(result_ui["error"])
+    st.write(result_ui)
+elif not isinstance(result_ui, dict):
+    st.write(result_ui)
+else:
+    overall = result_ui.get("overall_score")
+    priority = result_ui.get("priority")
+
+    if overall is not None:
+        st.metric("Overall Score", overall)
+
+    if priority:
+        st.write(f"Priority: **{priority}**")
+
+    def _render_list(title_txt: str, key: str):
+        items = result_ui.get(key) or []
+        if items:
+            st.subheader(title_txt)
+            for x in items:
+                st.write(f"- {x}")
+
+    _render_list("Why this fits", "why_this_fits")
+    _render_list("Risks / gaps", "risks_or_gaps")
+    _render_list("Top résumé edits", "top_resume_edits")
+    _render_list("Interview leverage points", "interview_leverage_points")
     
-    # Session state for downstream tools
-    st.session_state["last_resume_text"] = resume_text
-    st.session_state["last_job_text"] = job_desc
-    st.session_state["last_company"] = company or ""
-    st.session_state["last_title"] = title or ""
-    st.session_state["last_job_id"] = job_id
-    st.session_state["last_score_result"] = result
+    pitch = result_ui.get("two_line_pitch") if isinstance(result_ui, dict) else None
+    if pitch:
+        st.subheader("Two-line pitch")
+        st.write(pitch)
     
-    # Readable output
-    if isinstance(result, dict) and result.get("error"):
-        st.warning(result["error"])
-
-    if not isinstance(result, dict):
-        st.write(result)
-    else:
-        overall = result.get("overall_score") or result.get("total_score") or result.get("score")
-        priority = result.get("priority")
-
-        st.subheader("Fit score")
-
-        if overall is not None:
-            st.metric("Overall Score", overall)
-
-        if priority:
-            st.write(f"Priority: **{priority}**")
-
-        def _render_list(title_txt: str, key: str):
-            items = result.get(key) or []
-            if items:
-                st.subheader(title_txt)
-                for x in items:
-                    st.write(f"- {x}")
-
-        _render_list("Why this fits", "why_this_fits")
-        _render_list("Risks / gaps", "risks_or_gaps")
-        _render_list("Top résumé edits", "top_resume_edits")
-        _render_list("Interview leverage points", "interview_leverage_points")
-
-        pitch = result.get("two_line_pitch")
-        if pitch:
-            st.subheader("Two-line pitch")
-            st.write(pitch)
-
-        with st.expander("Full scoring output (debug)", expanded=False):
-            st.json(result)
-
-    st.info(f"Scoring mode used: {model_used}")
+    model_used_ui = st.session_state.get("last_model_used")
+    
+    with st.expander("Full scoring output (debug)", expanded=False):
+        st.json(result_ui if result_ui is not None else {})
+    
+    if model_used_ui:
+        st.info(f"Scoring mode used: {model_used_ui}")
+    
     st.divider()
 # -------------------------
 # Tailored résumé
