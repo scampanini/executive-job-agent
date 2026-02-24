@@ -351,10 +351,12 @@ if run:
         url=url or None,
     )
 
+    st.session_state["last_job_id"] = job_id
+
     # Persist JD + company
     st.session_state["last_job_desc"] = job_desc
     st.session_state["last_company"] = company or ""
-    st.session_state["last_job_id"] = job_id
+
 
     # Save resume
     resume_id = save_resume(
