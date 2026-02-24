@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.core.semantic_match import semantic_enabled, semantic_similarity
 from app.core.grounded_extract import EvidenceItem, extract_requirements_deterministic, load_evidence_index, tag_and_extract_signals
-from app.core.objective_requirements import apply_objective_overrides, rebucket_gap_resul
+from app.core.objective_requirements import apply_objective_overrides, rebucket_gap_result
 
 def _tokenize(s: str) -> List[str]:
     s = (s or "").lower()
