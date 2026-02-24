@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.core.semantic_match import semantic_enabled, semantic_similarity
 from app.core.grounded_extract import EvidenceItem, extract_requirements_deterministic, load_evidence_index, tag_and_extract_signals
-
+from app.core.objective_requirements import apply_objective_overrides, rebucket_gap_resul
 
 def _tokenize(s: str) -> List[str]:
     s = (s or "").lower()
@@ -235,7 +235,7 @@ def run_grounded_gap_analysis(
         f"Gaps: {len(buckets['gap'])}, Signal gaps: {len(buckets['signal_gap'])}."
     )
 
-    return {
+    gap_result = {
         "overall_alignment_score": overall,
         "summary": summary,
         "requirements_total": len(results),
@@ -245,7 +245,20 @@ def run_grounded_gap_analysis(
         "signal_gaps": buckets["signal_gap"],
         "all_results": results,
     }
-
+    
+    # Phase 4A(1) already complete (you said), but this is the canonical place:
+    gap_result, override_audit = apply_objective_overrides(
+        gap_result,
+        resume_text=resume_text,
+    )
+    
+    # ✅ Phase 4A(2): rebuild buckets + summary AFTER overrides
+    gap_result = rebucket_gap_result(gap_result)
+    
+    # Optional: keep traceability
+    gap_result["objective_overrides"] = override_audit
+    
+    return gap_result
 
 def save_grounded_gap_result(
     conn: sqlite3.Connection,
