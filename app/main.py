@@ -421,6 +421,24 @@ if run:
                 )
         gap_answers_text = "\n\n".join(answered_pairs)
 
+    # --- Grounded gap analysis: THIS RUN ---
+    gap_result_this_run = None
+    if use_gap_questions:
+        gap_result_this_run = grounded_gap_analysis(
+            resume_text=resume_text,
+            job_desc=job_desc,
+            portfolio_text=portfolio_text if "portfolio_text" in locals() else "",
+            gap_answers_text=gap_answers_text,
+            job_id=job_id,
+            resume_id=resume_id,
+        )
+
+    # Optional: persist it so "latest" works
+    save_grounded_gap_result(job_id=job_id, resume_id=resume_id, payload=gap_result_this_run)
+
+# Keep in session_state so it survives Streamlit reruns
+st.session_state["gap_result_this_run"] = gap_result_this_run
+    
     # --- Blended scoring ---
     result, model_used = score_role(
         resume_text,
@@ -448,7 +466,7 @@ if run:
     )
 
 # --- Display grounded results (persisted across reruns) ---
-gap_result_ui = st.session_state.get("last_gap_result")
+gap_result_ui = st.session_state.get("last_gap_result")  # optional legacy
 use_gap_questions_ui = st.session_state.get("last_use_gap_questions", False)
 result_ui = st.session_state.get("last_score_result")
 
@@ -456,21 +474,31 @@ if show_debug and gap_result_ui:
     with st.expander("🔬 DEBUG – Full grounded gap_result", expanded=False):
         st.json(gap_result_ui)
 
-st.subheader("🔎 Grounded Gap Analysis (latest)")
+def render_gap_block(g):
+    if not g:
+        st.info("No grounded gap result available.")
+        return
 
-if not gap_result_ui:
-    st.info("No grounded gap result generated yet. Click Run.")
-else:
-    st.write(gap_result_ui.get("summary", ""))
-    st.metric("Alignment Score", f"{gap_result_ui.get('overall_alignment_score', 0)}/100")
+    st.write(g.get("summary", ""))
+    st.metric("Alignment Score", f"{g.get('overall_alignment_score', 0)}/100")
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("Hard gaps", len(gap_result_ui.get("hard_gaps") or []))
-    c2.metric("Partial gaps", len(gap_result_ui.get("partial_gaps") or []))
-    c3.metric("Signal gaps", len(gap_result_ui.get("signal_gaps") or []))
+    c1.metric("Hard gaps", len(g.get("hard_gaps") or []))
+    c2.metric("Partial gaps", len(g.get("partial_gaps") or []))
+    c3.metric("Signal gaps", len(g.get("signal_gaps") or []))
 
-    if not use_gap_questions_ui:
-        st.info("No grounded gaps detected — skipping gap questions.")
+# --- THIS RUN ---
+st.subheader("🔎 Grounded Gap Analysis (this run)")
+render_gap_block(st.session_state.get("gap_result_this_run"))
+
+# --- LATEST (DB) ---
+st.subheader("🔎 Grounded Gap Analysis (latest)")
+job_id_ui = st.session_state.get("job_id")
+gap_result_latest = get_latest_grounded_gap_result(job_id=job_id_ui) if job_id_ui else None
+render_gap_block(gap_result_latest)
+
+if not use_gap_questions_ui:
+    st.info("No grounded gaps detected — skipping gap questions.")
 
 # --- Display blended score (latest) ---
 st.subheader("Fit score")
