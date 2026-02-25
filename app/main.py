@@ -387,7 +387,9 @@ if run:
         resume_text=resume_text,
     )
 
-    # Persist grounded results
+    # This run = the gap_result we just computed
+    st.session_state["gap_result_this_run"] = gap_result
+    st.session_state["job_id"] = job_id
     st.session_state["last_gap_result"] = gap_result
 
     use_gap_questions = bool(gap_result) and grounded_has_gaps(gap_result)
@@ -420,24 +422,6 @@ if run:
                     f"Q: {item['question']}\nA: {item['answer']}"
                 )
         gap_answers_text = "\n\n".join(answered_pairs)
-
-    # --- Grounded gap analysis: THIS RUN ---
-    gap_result_this_run = None
-    if use_gap_questions:
-        gap_result_this_run = grounded_gap_analysis(
-            resume_text=resume_text,
-            job_desc=job_desc,
-            portfolio_text=portfolio_text if "portfolio_text" in locals() else "",
-            gap_answers_text=gap_answers_text,
-            job_id=job_id,
-            resume_id=resume_id,
-        )
-
-    # Optional: persist it so "latest" works
-    save_grounded_gap_result(job_id=job_id, resume_id=resume_id, payload=gap_result_this_run)
-
-# Keep in session_state so it survives Streamlit reruns
-st.session_state["gap_result_this_run"] = gap_result_this_run
     
     # --- Blended scoring ---
     result, model_used = score_role(
