@@ -333,21 +333,19 @@ with st.form("score_role_form"):
 show_debug = st.checkbox("Show grounded debug JSON", value=False)
 
 def get_latest_grounded_gap_result(conn, job_id: int):
+    cur = conn.cursor()
+    cur.execute(
         """
-        Fetch most recent grounded gap result for a job_id.
-        Must match the table/column used by save_grounded_gap_result().
-        """
-        row = conn.execute(
-            """
-            SELECT result
-            FROM grounded_gap_results
-            WHERE job_id = ?
-            ORDER BY created_at DESC
-            LIMIT 1
-            """,
-            (job_id,),
-        ).fetchone()
-        return row["result"] if row else None
+        SELECT result
+        FROM grounded_gap_results
+        WHERE job_id = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (job_id,),
+    )
+    row = cur.fetchone()
+    return row[0] if row else None
 
 if run:
     if not resume_text.strip():
