@@ -332,6 +332,23 @@ with st.form("score_role_form"):
 # --- Display controls (persist across reruns) ---
 show_debug = st.checkbox("Show grounded debug JSON", value=False)
 
+def get_latest_grounded_gap_result(conn, job_id: int):
+        """
+        Fetch most recent grounded gap result for a job_id.
+        Must match the table/column used by save_grounded_gap_result().
+        """
+        row = conn.execute(
+            """
+            SELECT result
+            FROM grounded_gap_results
+            WHERE job_id = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (job_id,),
+        ).fetchone()
+        return row["result"] if row else None
+
 if run:
     if not resume_text.strip():
         st.error("Please upload your résumé first.")
@@ -402,7 +419,7 @@ if run:
         job_id=job_id,
         result=gap_result
     )
-
+    
     # Attach gap questions (side effect only during run)
     if use_gap_questions:
         attach_unlinked_gap_questions_to_job(job_id=job_id, limit=50)
@@ -478,7 +495,7 @@ render_gap_block(st.session_state.get("gap_result_this_run"))
 # --- LATEST (DB) ---
 st.subheader("🔎 Grounded Gap Analysis (latest)")
 job_id_ui = st.session_state.get("job_id")
-gap_result_latest = get_latest_grounded_gap_result(job_id=job_id_ui) if job_id_ui else None
+gap_result_latest = st.session_state.get("last_gap_result")
 render_gap_block(gap_result_latest)
 
 if not use_gap_questions_ui:
