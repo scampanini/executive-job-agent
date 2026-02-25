@@ -467,9 +467,8 @@ if run:
     )
 
 # --- Display grounded results (persisted across reruns) ---
-gap_result_ui = st.session_state.get("last_gap_result")  # optional legacy
+gap_result_ui = st.session_state.get("last_gap_result")
 use_gap_questions_ui = st.session_state.get("last_use_gap_questions", False)
-result_ui = st.session_state.get("last_score_result")
 
 if show_debug and gap_result_ui:
     with st.expander("🔬 DEBUG – Full grounded gap_result", expanded=False):
@@ -494,11 +493,13 @@ render_gap_block(st.session_state.get("gap_result_this_run"))
 
 # --- LATEST (DB) ---
 st.subheader("🔎 Grounded Gap Analysis (latest)")
-render_gap_block(st.session_state.get("gap_result_latest_before_save"))
+job_id_ui = st.session_state.get("job_id")
+gap_result_latest = get_latest_grounded_gap_result(job_id=job_id_ui) if job_id_ui else None
+render_gap_block(gap_result_latest)
 
 if not use_gap_questions_ui:
     st.info("No grounded gaps detected — skipping gap questions.")
-
+    
 # --- Display blended score (latest) ---
 st.subheader("Fit score")
 
