@@ -496,9 +496,7 @@ render_gap_block(st.session_state.get("gap_result_this_run"))
 
 # --- LATEST (DB) ---
 st.subheader("🔎 Grounded Gap Analysis (latest)")
-job_id_ui = st.session_state.get("job_id")
-gap_result_latest = st.session_state.get("last_gap_result")
-render_gap_block(gap_result_latest)
+render_gap_block(st.session_state.get("gap_result_latest_before_save"))
 
 if not use_gap_questions_ui:
     st.info("No grounded gaps detected — skipping gap questions.")
