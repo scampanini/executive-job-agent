@@ -412,6 +412,8 @@ if run:
     use_gap_questions = bool(gap_result) and grounded_has_gaps(gap_result)
     st.session_state["last_use_gap_questions"] = use_gap_questions
 
+    st.session_state["gap_result_latest_before_save"] = get_latest_grounded_gap_result(conn, job_id)
+    
     # Save grounded result
     save_grounded_gap_result(
         conn=conn,
