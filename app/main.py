@@ -14,6 +14,8 @@ from app.core.job_resume_fetch import get_job_description
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import json
+import sqlite3
 
 
 @st.cache_data(ttl=15)
@@ -333,19 +335,36 @@ with st.form("score_role_form"):
 show_debug = st.checkbox("Show grounded debug JSON", value=False)
 
 def get_latest_grounded_gap_result(conn, job_id: int):
-    cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT result
-        FROM grounded_gap_results
-        WHERE job_id = ?
-        ORDER BY created_at DESC
-        LIMIT 1
-        """,
-        (job_id,),
-    )
-    row = cur.fetchone()
-    return row[0] if row else None
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT result
+            FROM grounded_gap_results
+            WHERE job_id = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (job_id,),
+        )
+        row = cur.fetchone()
+
+        if not row or row[0] is None:
+            return None
+
+        # If stored as JSON string, decode it
+        if isinstance(row[0], str):
+            try:
+                return json.loads(row[0])
+            except Exception:
+                return row[0]
+
+        # If already dict-like
+        return row[0]
+
+    except sqlite3.OperationalError:
+        # Table doesn't exist yet or schema mismatch
+        return None
 
 if run:
     if not resume_text.strip():
@@ -500,10 +519,14 @@ render_gap_block(st.session_state.get("gap_result_this_run"))
 # --- LATEST (DB) ---
 st.subheader("🔎 Grounded Gap Analysis (latest)")
 conn_ui = get_conn()
-gap_result_latest = get_latest_grounded_gap_result(conn_ui, job_id_ui) if job_id_ui else None
+
+try:
+    gap_result_latest = get_latest_grounded_gap_result(conn_ui, job_id_ui) if job_id_ui else None
+except Exception as e:
+    gap_result_latest = None
+    st.warning(f"Could not load latest grounded gap result: {e}")
+
 render_gap_block(gap_result_latest)
-conn = get_conn()
-ensure_grounded_gap_tables(conn)
 
 if not use_gap_questions_ui:
     st.info("No grounded gaps detected — skipping gap questions.")
