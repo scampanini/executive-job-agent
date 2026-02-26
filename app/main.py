@@ -499,8 +499,11 @@ render_gap_block(st.session_state.get("gap_result_this_run"))
 
 # --- LATEST (DB) ---
 st.subheader("🔎 Grounded Gap Analysis (latest)")
-gap_result_latest = get_latest_grounded_gap_result(job_id=job_id_ui) if job_id_ui else None
+conn_ui = get_conn()
+gap_result_latest = get_latest_grounded_gap_result(conn_ui, job_id_ui) if job_id_ui else None
 render_gap_block(gap_result_latest)
+conn = get_conn()
+ensure_grounded_gap_tables(conn)
 
 if not use_gap_questions_ui:
     st.info("No grounded gaps detected — skipping gap questions.")
@@ -536,20 +539,18 @@ else:
     _render_list("Risks / gaps", "risks_or_gaps")
     _render_list("Top résumé edits", "top_resume_edits")
     _render_list("Interview leverage points", "interview_leverage_points")
-    
-    pitch = result_ui.get("two_line_pitch") if isinstance(result_ui, dict) else None
+
+    pitch = result_ui.get("two_line_pitch")
     if pitch:
         st.subheader("Two-line pitch")
         st.write(pitch)
-    
-    model_used_ui = st.session_state.get("last_model_used")
-    
+
     with st.expander("Full scoring output (debug)", expanded=False):
-        st.json(result_ui if result_ui is not None else {})
-    
+        st.json(result_ui)
+
     if model_used_ui:
         st.info(f"Scoring mode used: {model_used_ui}")
-    
+
     st.divider()
 # -------------------------
 # Tailored résumé
