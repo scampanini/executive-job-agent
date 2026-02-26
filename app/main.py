@@ -865,15 +865,16 @@ items = sorted(items, key=_pipeline_sort_key, reverse=reverse)
 if not items:
     st.info("No active pipeline items yet.")
 else:
-    pid = it.get("pipeline_id") or it.get("id")
-    if pid is None:
-        continue
-    
-    _fs = it.get("fit_score")
-    try:
-        _fs = float(_fs) if _fs is not None else None
-    except Exception:
-        _fs = None
+    for it in items:
+        pid = it.get("pipeline_id") or it.get("id")
+        if pid is None:
+            continue
+
+        _fs = it.get("fit_score")
+        try:
+            _fs = float(_fs) if _fs is not None else None
+        except Exception:
+            _fs = None
 
         title_txt = safe_text(it.get("title")) or "—"
         company_txt = safe_text(it.get("company")) or "—"
