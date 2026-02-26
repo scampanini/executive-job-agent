@@ -908,9 +908,9 @@ else:
                 st.rerun()
 
         st.write(f"Stage: **{safe_text(it.get('stage'))}**")
-        if it.get("fit_score") is not None:
+        if _fs is not None:
             st.write(
-                f"Fit score: **{it.get('fit_score')}**   |   "
+                f"Fit score: **{_fs}**   |   "
                 f"Priority: **{safe_text(it.get('priority')) or '—'}**"
             )
         if it.get("next_action_date"):
