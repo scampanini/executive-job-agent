@@ -74,6 +74,92 @@ def slugify_filename(s: str, max_len: int = 60) -> str:
     return (s[:max_len] or "unknown")
 
 
+def _best_snippets(text: str, keywords: list[str], max_lines: int = 3) -> str:
+    if not text:
+        return ""
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    hits = []
+    kw = [k.lower() for k in keywords]
+    for ln in lines:
+        l = ln.lower()
+        score = sum(1 for k in kw if k in l)
+        if score > 0:
+            hits.append((score, ln))
+    hits.sort(key=lambda x: x[0], reverse=True)
+    top = [h[1] for h in hits[:max_lines]]
+    return "\n".join(top).strip()
+
+
+def build_gap_suggestions(resume_text: str, portfolio_text: str) -> dict[str, str]:
+    corpus = (portfolio_text or "") + "\n" + (resume_text or "")
+    return {
+        "What are 1–2 examples of supporting a CEO or C-suite leader (cadence, priorities, decision support)?":
+            _best_snippets(corpus, ["ceo", "c-suite", "cfo", "coo", "cadence", "priorities", "exec", "chief of staff"], 3),
+        "Do you have an example involving Board materials, QBRs, or executive presentations? What was your role?":
+            _best_snippets(corpus, ["board", "qbr", "quarterly business review", "deck", "presentation", "materials"], 3),
+        "What tools/systems are you strongest in (Office, Google, Slack, Teams, Concur, Workday, ATS, CRM, etc.)?":
+            _best_snippets(corpus, ["slack", "teams", "concur", "workday", "office", "google", "ats", "crm", "salesforce"], 4),
+        "Have you managed budgets, purchase orders, invoices, or vendor relationships? Any approximate scope?":
+            _best_snippets(corpus, ["budget", "po", "purchase order", "invoice", "vendor", "procurement"], 3),
+        "Any experience with confidential matters (reorgs, M&A, HR issues, legal) you can describe at a high level?":
+            _best_snippets(corpus, ["confidential", "reorg", "m&a", "legal", "hr", "acquisition"], 3),
+        "Any example of process improvement (what you changed, why, and the result)?":
+            _best_snippets(corpus, ["process", "streamline", "automation", "reduced", "cycle time", "standardized"], 3),
+    }
+
+def _gap_to_question(g: dict) -> str:
+    """
+    Convert a grounded gap item into a targeted user question.
+    Expected fields often include: competency, category, text, must_have, weight, etc.
+    """
+    txt = safe_text(g.get("text") or g.get("requirement") or g.get("competency") or "").strip()
+    comp = safe_text(g.get("competency") or "").strip()
+    cat = safe_text(g.get("category") or "").strip()
+
+    if not txt:
+        return ""
+
+    # Make it actionable + evidence-seeking
+    prefix = "Provide a specific example (scope + metrics) that demonstrates: "
+    if comp and comp.lower() not in txt.lower():
+        return f"{prefix}{comp} — {txt}"
+    if cat:
+        return f"{prefix}{txt} (category: {cat})"
+    return f"{prefix}{txt}"
+
+
+def build_dynamic_gap_questions(gap_result: dict, max_questions: int = 8) -> list[str]:
+    """
+    Pull from hard_gaps then partial_gaps then signal_gaps, dedupe, cap.
+    """
+    if not gap_result:
+        return []
+
+    ordered = []
+    for k in ("hard_gaps", "partial_gaps", "signal_gaps"):
+        items = gap_result.get(k) or []
+        if isinstance(items, list):
+            ordered.extend(items)
+
+    questions: list[str] = []
+    seen = set()
+    for g in ordered:
+        if not isinstance(g, dict):
+            continue
+        q = _gap_to_question(g)
+        if not q:
+            continue
+        key = q.strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        questions.append(q)
+        if len(questions) >= max_questions:
+            break
+
+    return questions
+
+
 def dl_name(company: str, base: str, ext: str = "txt") -> str:
     c = slugify_filename(company)
     b = slugify_filename(base)
@@ -92,6 +178,13 @@ def parse_yyyy_mm_dd(s):
         return datetime.strptime(str(s).strip(), "%Y-%m-%d").date()
     except Exception:
         return None
+
+
+def job_desc_mentions_salary(text: str) -> bool:
+    if not text:
+        return False
+    t = text.lower()
+    return bool(re.search(r"\$\s?\d{2,3}(?:,\d{3})+|\b\d{2,3}\s?k\b|compensation|salary range|base pay", t))
 
 
 def grounded_has_gaps(gap_result: dict | None) -> bool:
@@ -117,7 +210,6 @@ def _call_scorer(fn, resume_text: str, job_text: str, min_base: int):
         except TypeError:
             continue
     return fn(resume_text, job_text)
-
 
 def score_role(
     resume_text: str,
@@ -176,32 +268,51 @@ def _updated_at_sort_value(val) -> int:
 
 
 def get_latest_grounded_gap_result(conn, job_id: int):
+    """
+    Schema-robust loader: works even if the result column is named differently.
+    Tries common column names and falls back safely.
+    """
     try:
         cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT result
+
+        # discover columns
+        cur.execute("PRAGMA table_info(grounded_gap_results)")
+        cols = [r[1] for r in cur.fetchall()]  # (cid, name, type, notnull, dflt, pk)
+        if not cols:
+            return None
+
+        # prefer these result column names if present
+        candidates = ["result", "result_json", "payload", "data", "json"]
+        result_col = next((c for c in candidates if c in cols), None)
+        if result_col is None:
+            # last resort: pick any TEXT-like column that might store JSON
+            # (still safe—if it isn't JSON, we'll just return it)
+            result_col = cols[-1]
+
+        q = f"""
+            SELECT {result_col}
             FROM grounded_gap_results
             WHERE job_id = ?
             ORDER BY created_at DESC
             LIMIT 1
-            """,
-            (job_id,),
-        )
+        """
+        cur.execute(q, (job_id,))
         row = cur.fetchone()
         if not row or row[0] is None:
             return None
 
-        if isinstance(row[0], str):
+        val = row[0]
+        if isinstance(val, (dict, list)):
+            return val
+        if isinstance(val, str):
             try:
-                return json.loads(row[0])
+                return json.loads(val)
             except Exception:
-                return row[0]
+                return val
+        return val
 
-        return row[0]
     except (sqlite3.OperationalError, sqlite3.DatabaseError):
         return None
-
 
 # -------------------------
 # App init
@@ -344,7 +455,9 @@ with col_r:
         ]
         for q in questions:
             create_gap_question(question=q, gap_type="resume", job_id=None)
+
         st.success("Gap questions created. Answer them below.")
+        st.session_state["gap_suggestions"] = build_gap_suggestions(resume_text, portfolio_text)
 
     gaps = list_gap_questions(job_id=None, unanswered_only=True, limit=20)
     if not gaps:
@@ -357,13 +470,52 @@ with col_r:
                 answer_gap_question(question_id=int(item["id"]), answer=ans.strip())
                 st.cache_data.clear()
                 st.rerun()
+    st.divider()
+    st.subheader("Grounded gap questions (from latest run)")
+    
+    job_id_for_gaps = st.session_state.get("last_job_id")
+    if not job_id_for_gaps:
+        st.caption("Score a role to generate grounded gap questions tied to that job.")
+    else:
+        job_gaps = list_gap_questions(job_id=int(job_id_for_gaps), unanswered_only=True, limit=50) or []
+        if not job_gaps:
+            st.caption("No open grounded gap questions for this job.")
+        else:
+            for item in job_gaps:
+                st.write(f"**Q:** {item['question']}")
+                ans = st.text_input("Your answer (grounded)", value="", key=f"job_gap_answer_{item['id']}")
+                if st.button("Save answer", key=f"job_gap_save_{item['id']}"):
+                    answer_gap_question(question_id=int(item["id"]), answer=ans.strip())
+                    st.cache_data.clear()
+                    st.rerun()
 
-with st.form("score_role_form"):
-    run = st.form_submit_button("Score role")
-
-show_debug = st.checkbox("Show grounded debug JSON", value=False)
-st.session_state["show_debug"] = show_debug
-
+    # ✅ Suggested answers from résumé/portfolio
+    suggestions = st.session_state.get("gap_suggestions") or {}
+    if suggestions:
+        with st.expander("Suggested answers found in your résumé/portfolio", expanded=True):
+            for q, sug in suggestions.items():
+                if not sug.strip():
+                    continue
+                st.markdown(f"**Q:** {q}")
+                st.text_area(
+                    "Suggested evidence",
+                    value=sug,
+                    height=120,
+                    key=f"sug_{slugify_filename(q)}",
+                )
+                if st.button("Save this as my answer", key=f"sug_save_{slugify_filename(q)}"):
+                    open_qs = list_gap_questions(job_id=None, unanswered_only=True, limit=50) or []
+                    match = next((x for x in open_qs if x.get("question") == q), None)
+                    if match:
+                        answer_gap_question(question_id=int(match["id"]), answer=sug.strip())
+                        st.cache_data.clear()
+                        st.rerun()
+    
+    with st.form("score_role_form"):
+        run = st.form_submit_button("Score role")
+    
+    show_debug = st.checkbox("Show grounded debug JSON", value=False)
+    st.session_state["show_debug"] = show_debug
 
 # -------------------------
 # Run scoring + grounded gap engine
@@ -425,16 +577,39 @@ if run:
         use_gap_questions = grounded_has_gaps(gap_result)
         st.session_state["last_use_gap_questions"] = use_gap_questions
 
-        # Save grounded result only if valid
+        # ---- Create dynamic, job-linked grounded gap questions ----
+        if use_gap_questions:
+            dyn_questions = build_dynamic_gap_questions(gap_result, max_questions=8)
+
+            existing = list_gap_questions(job_id=job_id, unanswered_only=False, limit=200) or []
+            existing_text = set(safe_text(x.get("question")).strip().lower() for x in existing)
+
+            created = 0
+            for q in dyn_questions:
+                qk = q.strip().lower()
+                if not qk or qk in existing_text:
+                    continue
+                create_gap_question(question=q, gap_type="grounded", job_id=job_id)
+                existing_text.add(qk)
+                created += 1
+
+            if created:
+                st.toast(f"Created {created} grounded gap questions")
+
+        # ---- Save grounded result (independent of use_gap_questions) ----
         if gap_result:
             save_grounded_gap_result(conn=conn, resume_id=resume_id, job_id=job_id, result=gap_result)
         else:
             st.warning("Grounded gap engine returned no result; nothing was saved.")
 
+        if show_debug:
+            st.caption(f"DEBUG: grounded gap save attempted; job_id={job_id}")
+
+        # ---- Attach any existing unlinked questions to this job ----
         if use_gap_questions:
             attach_unlinked_gap_questions_to_job(job_id=job_id, limit=50)
 
-        # Gap answer text (grounded addendum)
+        # ---- Build gap answer text (from job-linked questions) ----
         gap_answers_text = ""
         if use_gap_questions:
             answered = list_gap_questions(job_id=job_id, unanswered_only=False, limit=50) or []
@@ -444,25 +619,25 @@ if run:
                     answered_pairs.append(f"Q: {item['question']}\nA: {item['answer']}")
             gap_answers_text = "\n\n".join(answered_pairs)
 
-        # Merge portfolio into scoring context even if user didn't re-upload this session
+        # ---- Merge portfolio into scoring context even if user didn't re-upload this session ----
         if portfolio_text.strip():
             portfolio_for_scoring = portfolio_text
         else:
-            # portfolio_texts could be dicts or strings depending on your store
             joined = []
-            for p in portfolio_texts:
+            for p in (portfolio_texts or []):
                 if isinstance(p, dict):
                     joined.append(safe_text(p.get("raw_text") or p.get("text") or ""))
                 else:
                     joined.append(safe_text(p))
             portfolio_for_scoring = "\n\n".join([x for x in joined if x.strip()])
 
-        # Blended scoring
+        min_base_for_scoring = min_base if job_desc_mentions_salary(job_desc) else 0
+        # ---- Blended scoring (always run) ----
         result, model_used = score_role(
             resume_text=resume_text,
             job_text=job_desc,
             use_ai=use_ai,
-            min_base=min_base,
+            min_base=min_base_for_scoring,
             portfolio_text=portfolio_for_scoring,
             gap_answers_text=gap_answers_text,
         )
@@ -472,7 +647,7 @@ if run:
         st.session_state["last_resume_text"] = resume_text
 
         save_score(job_id=job_id, resume_id=resume_id, result=result, model=model_used)
-
+        
     except Exception as e:
         st.error(f"Run failed: {e}")
     finally:
