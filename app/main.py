@@ -41,10 +41,6 @@ from app.core.storage import (
     get_setting,
     set_setting,
     save_document,
-    create_gap_question,
-    list_gap_questions,
-    answer_gap_question,
-    attach_unlinked_gap_questions_to_job,
     save_resume,
     save_job,
     save_score,
@@ -126,38 +122,6 @@ def _gap_to_question(g: dict) -> str:
     if cat:
         return f"{prefix}{txt} (category: {cat})"
     return f"{prefix}{txt}"
-
-
-def build_dynamic_gap_questions(gap_result: dict, max_questions: int = 8) -> list[str]:
-    """
-    Pull from hard_gaps then partial_gaps then signal_gaps, dedupe, cap.
-    """
-    if not gap_result:
-        return []
-
-    ordered = []
-    for k in ("hard_gaps", "partial_gaps", "signal_gaps"):
-        items = gap_result.get(k) or []
-        if isinstance(items, list):
-            ordered.extend(items)
-
-    questions: list[str] = []
-    seen = set()
-    for g in ordered:
-        if not isinstance(g, dict):
-            continue
-        q = _gap_to_question(g)
-        if not q:
-            continue
-        key = q.strip().lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        questions.append(q)
-        if len(questions) >= max_questions:
-            break
-
-    return questions
 
 
 def dl_name(company: str, base: str, ext: str = "txt") -> str:
@@ -458,37 +422,7 @@ with col_r:
 
         st.success("Gap questions created. Answer them below.")
         st.session_state["gap_suggestions"] = build_gap_suggestions(resume_text, portfolio_text)
-
-    gaps = list_gap_questions(job_id=None, unanswered_only=True, limit=20)
-    if not gaps:
-        st.caption("No open gap questions yet. Click “Generate gap questions” to create a short set.")
-    else:
-        for item in gaps:
-            st.write(f"**Q:** {item['question']}")
-            ans = st.text_input("Your answer", value="", key=f"gap_answer_{item['id']}")
-            if st.button("Save answer", key=f"gap_save_{item['id']}"):
-                answer_gap_question(question_id=int(item["id"]), answer=ans.strip())
-                st.cache_data.clear()
-                st.rerun()
-    st.divider()
-    st.subheader("Grounded gap questions (from latest run)")
     
-    job_id_for_gaps = st.session_state.get("last_job_id")
-    if not job_id_for_gaps:
-        st.caption("Score a role to generate grounded gap questions tied to that job.")
-    else:
-        job_gaps = list_gap_questions(job_id=int(job_id_for_gaps), unanswered_only=True, limit=50) or []
-        if not job_gaps:
-            st.caption("No open grounded gap questions for this job.")
-        else:
-            for item in job_gaps:
-                st.write(f"**Q:** {item['question']}")
-                ans = st.text_input("Your answer (grounded)", value="", key=f"job_gap_answer_{item['id']}")
-                if st.button("Save answer", key=f"job_gap_save_{item['id']}"):
-                    answer_gap_question(question_id=int(item["id"]), answer=ans.strip())
-                    st.cache_data.clear()
-                    st.rerun()
-
     # ✅ Suggested answers from résumé/portfolio
     suggestions = st.session_state.get("gap_suggestions") or {}
     if suggestions:
@@ -503,14 +437,7 @@ with col_r:
                     height=120,
                     key=f"sug_{slugify_filename(q)}",
                 )
-                if st.button("Save this as my answer", key=f"sug_save_{slugify_filename(q)}"):
-                    open_qs = list_gap_questions(job_id=None, unanswered_only=True, limit=50) or []
-                    match = next((x for x in open_qs if x.get("question") == q), None)
-                    if match:
-                        answer_gap_question(question_id=int(match["id"]), answer=sug.strip())
-                        st.cache_data.clear()
-                        st.rerun()
-    
+                
     with st.form("score_role_form"):
         run = st.form_submit_button("Score role")
     
@@ -545,6 +472,7 @@ if run:
     st.session_state["last_company"] = company or ""
     st.session_state["last_title"] = title or ""
     st.session_state["last_job_text"] = job_desc
+    st.session_state["last_gap_result"] = gap_result
 
     conn = None
     try:
@@ -574,28 +502,6 @@ if run:
         st.session_state["last_gap_result"] = gap_result
         st.session_state["job_id"] = job_id
 
-        use_gap_questions = grounded_has_gaps(gap_result)
-        st.session_state["last_use_gap_questions"] = use_gap_questions
-
-        # ---- Create dynamic, job-linked grounded gap questions ----
-        if use_gap_questions:
-            dyn_questions = build_dynamic_gap_questions(gap_result, max_questions=8)
-
-            existing = list_gap_questions(job_id=job_id, unanswered_only=False, limit=200) or []
-            existing_text = set(safe_text(x.get("question")).strip().lower() for x in existing)
-
-            created = 0
-            for q in dyn_questions:
-                qk = q.strip().lower()
-                if not qk or qk in existing_text:
-                    continue
-                create_gap_question(question=q, gap_type="grounded", job_id=job_id)
-                existing_text.add(qk)
-                created += 1
-
-            if created:
-                st.toast(f"Created {created} grounded gap questions")
-
         # ---- Save grounded result (independent of use_gap_questions) ----
         if gap_result:
             save_grounded_gap_result(conn=conn, resume_id=resume_id, job_id=job_id, result=gap_result)
@@ -604,20 +510,6 @@ if run:
 
         if show_debug:
             st.caption(f"DEBUG: grounded gap save attempted; job_id={job_id}")
-
-        # ---- Attach any existing unlinked questions to this job ----
-        if use_gap_questions:
-            attach_unlinked_gap_questions_to_job(job_id=job_id, limit=50)
-
-        # ---- Build gap answer text (from job-linked questions) ----
-        gap_answers_text = ""
-        if use_gap_questions:
-            answered = list_gap_questions(job_id=job_id, unanswered_only=False, limit=50) or []
-            answered_pairs = []
-            for item in answered:
-                if item.get("answer"):
-                    answered_pairs.append(f"Q: {item['question']}\nA: {item['answer']}")
-            gap_answers_text = "\n\n".join(answered_pairs)
 
         # ---- Merge portfolio into scoring context even if user didn't re-upload this session ----
         if portfolio_text.strip():
@@ -667,7 +559,6 @@ job_id_ui = st.session_state.get("job_id") or st.session_state.get("last_job_id"
 resume_id_ui = st.session_state.get("last_resume_id")
 
 gap_result_ui = st.session_state.get("last_gap_result")
-use_gap_questions_ui = st.session_state.get("last_use_gap_questions", False)
 show_debug = st.session_state.get("show_debug", False)
 
 if show_debug and gap_result_ui:
@@ -709,10 +600,6 @@ finally:
             pass
 
 render_gap_block(gap_result_latest)
-
-if not use_gap_questions_ui:
-    st.info("No grounded gaps detected — skipping gap questions.")
-
 
 # -------------------------
 # Fit score
@@ -915,6 +802,50 @@ else:
 
 st.divider()
 
+st.subheader("Gap Insights (Grounded)")
+gap_result = st.session_state.get("last_gap_result")
+
+    # render Gap Insights block
+    
+# ✅ Gap Insights goes here (right before dashboard)
+st.subheader("Gap Insights (Grounded)")
+gap_result = st.session_state.get("last_gap_result")
+
+if not gap_result:
+    st.caption("Score a role to generate grounded gap insights tied to that job.")
+else:
+    st.write(gap_result.get("summary", ""))
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Hard gaps", len(gap_result.get("hard_gaps") or []))
+    c2.metric("Partial gaps", len(gap_result.get("partial_gaps") or []))
+    c3.metric("Signal gaps", len(gap_result.get("signal_gaps") or []))
+
+st.divider()
+
+st.subheader("Gap Insights (Grounded)")
+gap_result = st.session_state.get("last_gap_result")
+
+# Optional: only show the section after a score run has established a job context
+if not st.session_state.get("last_job_id"):
+    st.caption("Score a role to generate grounded gap insights tied to that job.")
+elif not gap_result:
+    st.caption("No grounded gap insights found for the latest run.")
+else:
+    st.write(gap_result.get("summary", ""))
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Hard gaps", len(gap_result.get("hard_gaps") or []))
+    c2.metric("Partial gaps", len(gap_result.get("partial_gaps") or []))
+    c3.metric("Signal gaps", len(gap_result.get("signal_gaps") or []))
+
+st.divider()
+
+# -------------------------
+# Dashboard + Pipeline Tracker
+# -------------------------
+st.subheader("Dashboard (Active roles)")
+...
 
 # -------------------------
 # Dashboard + Pipeline Tracker
