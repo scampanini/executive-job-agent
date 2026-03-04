@@ -314,6 +314,9 @@ def get_latest_grounded_gap_result(conn, job_id: int):
     except (sqlite3.OperationalError, sqlite3.DatabaseError):
         return None
 
+if "last_gap_result" not in st.session_state:
+    st.session_state["last_gap_result"] = None
+    
 # -------------------------
 # App init
 # -------------------------
@@ -511,12 +514,25 @@ with col_r:
                         st.cache_data.clear()
                         st.rerun()
     
-    with st.form("score_role_form"):
-        run = st.form_submit_button("Score role")
-    
-    show_debug = st.checkbox("Show grounded debug JSON", value=False)
-    st.session_state["show_debug"] = show_debug
+with st.form("score_role_form"):
+    run = st.form_submit_button("Score role")
 
+# Put the checkbox OUTSIDE the run block so it doesn't depend on running
+show_debug = st.checkbox("Show grounded debug JSON", value=False, key="show_debug")
+st.session_state["show_debug"] = show_debug
+
+    # Score role (gap questions removed)
+    result, model_used = score_role(
+        resume_text=resume_text,
+        job_text=job_desc,
+        portfolio_text=portfolio_for_scoring,
+        gap_answers_text="",  # removed feature
+    )
+
+    # (Optional) persist last score
+    st.session_state["last_score_result"] = result
+    st.session_state["last_model_used"] = model_used
+    
 # -------------------------
 # Run scoring + grounded gap engine
 # -------------------------
@@ -546,6 +562,10 @@ if run:
     st.session_state["last_title"] = title or ""
     st.session_state["last_job_text"] = job_desc
 
+    # Persist latest grounded gap result for UI
+    st.session_state["last_gap_result"] = gap_result
+    st.session_state["gap_result_this_run"] = gap_result
+
     conn = None
     try:
         conn = get_conn()
@@ -569,32 +589,9 @@ if run:
             job_description=job_desc,
             resume_text=resume_text,
         )
-
-        st.session_state["gap_result_this_run"] = gap_result
         st.session_state["last_gap_result"] = gap_result
+        st.session_state["gap_result_this_run"] = gap_result
         st.session_state["job_id"] = job_id
-
-        use_gap_questions = grounded_has_gaps(gap_result)
-        st.session_state["last_use_gap_questions"] = use_gap_questions
-
-        # ---- Create dynamic, job-linked grounded gap questions ----
-        if use_gap_questions:
-            dyn_questions = build_dynamic_gap_questions(gap_result, max_questions=8)
-
-            existing = list_gap_questions(job_id=job_id, unanswered_only=False, limit=200) or []
-            existing_text = set(safe_text(x.get("question")).strip().lower() for x in existing)
-
-            created = 0
-            for q in dyn_questions:
-                qk = q.strip().lower()
-                if not qk or qk in existing_text:
-                    continue
-                create_gap_question(question=q, gap_type="grounded", job_id=job_id)
-                existing_text.add(qk)
-                created += 1
-
-            if created:
-                st.toast(f"Created {created} grounded gap questions")
 
         # ---- Save grounded result (independent of use_gap_questions) ----
         if gap_result:
@@ -604,20 +601,6 @@ if run:
 
         if show_debug:
             st.caption(f"DEBUG: grounded gap save attempted; job_id={job_id}")
-
-        # ---- Attach any existing unlinked questions to this job ----
-        if use_gap_questions:
-            attach_unlinked_gap_questions_to_job(job_id=job_id, limit=50)
-
-        # ---- Build gap answer text (from job-linked questions) ----
-        gap_answers_text = ""
-        if use_gap_questions:
-            answered = list_gap_questions(job_id=job_id, unanswered_only=False, limit=50) or []
-            answered_pairs = []
-            for item in answered:
-                if item.get("answer"):
-                    answered_pairs.append(f"Q: {item['question']}\nA: {item['answer']}")
-            gap_answers_text = "\n\n".join(answered_pairs)
 
         # ---- Merge portfolio into scoring context even if user didn't re-upload this session ----
         if portfolio_text.strip():
