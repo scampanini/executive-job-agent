@@ -2,6 +2,11 @@
 # main.py (STABLE BASELINE)
 # =========================
 
+if "last_gap_result" not in st.session_state:
+    st.session_state["last_gap_result"] = None
+if "gap_result_this_run" not in st.session_state:
+    st.session_state["gap_result_this_run"] = None
+
 # ---- stdlib ----
 import sys
 from pathlib import Path
@@ -90,75 +95,6 @@ def _best_snippets(text: str, keywords: list[str], max_lines: int = 3) -> str:
     return "\n".join(top).strip()
 
 
-def build_gap_suggestions(resume_text: str, portfolio_text: str) -> dict[str, str]:
-    corpus = (portfolio_text or "") + "\n" + (resume_text or "")
-    return {
-        "What are 1–2 examples of supporting a CEO or C-suite leader (cadence, priorities, decision support)?":
-            _best_snippets(corpus, ["ceo", "c-suite", "cfo", "coo", "cadence", "priorities", "exec", "chief of staff"], 3),
-        "Do you have an example involving Board materials, QBRs, or executive presentations? What was your role?":
-            _best_snippets(corpus, ["board", "qbr", "quarterly business review", "deck", "presentation", "materials"], 3),
-        "What tools/systems are you strongest in (Office, Google, Slack, Teams, Concur, Workday, ATS, CRM, etc.)?":
-            _best_snippets(corpus, ["slack", "teams", "concur", "workday", "office", "google", "ats", "crm", "salesforce"], 4),
-        "Have you managed budgets, purchase orders, invoices, or vendor relationships? Any approximate scope?":
-            _best_snippets(corpus, ["budget", "po", "purchase order", "invoice", "vendor", "procurement"], 3),
-        "Any experience with confidential matters (reorgs, M&A, HR issues, legal) you can describe at a high level?":
-            _best_snippets(corpus, ["confidential", "reorg", "m&a", "legal", "hr", "acquisition"], 3),
-        "Any example of process improvement (what you changed, why, and the result)?":
-            _best_snippets(corpus, ["process", "streamline", "automation", "reduced", "cycle time", "standardized"], 3),
-    }
-
-def _gap_to_question(g: dict) -> str:
-    """
-    Convert a grounded gap item into a targeted user question.
-    Expected fields often include: competency, category, text, must_have, weight, etc.
-    """
-    txt = safe_text(g.get("text") or g.get("requirement") or g.get("competency") or "").strip()
-    comp = safe_text(g.get("competency") or "").strip()
-    cat = safe_text(g.get("category") or "").strip()
-
-    if not txt:
-        return ""
-
-    # Make it actionable + evidence-seeking
-    prefix = "Provide a specific example (scope + metrics) that demonstrates: "
-    if comp and comp.lower() not in txt.lower():
-        return f"{prefix}{comp} — {txt}"
-    if cat:
-        return f"{prefix}{txt} (category: {cat})"
-    return f"{prefix}{txt}"
-
-
-def build_dynamic_gap_questions(gap_result: dict, max_questions: int = 8) -> list[str]:
-    """
-    Pull from hard_gaps then partial_gaps then signal_gaps, dedupe, cap.
-    """
-    if not gap_result:
-        return []
-
-    ordered = []
-    for k in ("hard_gaps", "partial_gaps", "signal_gaps"):
-        items = gap_result.get(k) or []
-        if isinstance(items, list):
-            ordered.extend(items)
-
-    questions: list[str] = []
-    seen = set()
-    for g in ordered:
-        if not isinstance(g, dict):
-            continue
-        q = _gap_to_question(g)
-        if not q:
-            continue
-        key = q.strip().lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        questions.append(q)
-        if len(questions) >= max_questions:
-            break
-
-    return questions
-
 
 def dl_name(company: str, base: str, ext: str = "txt") -> str:
     c = slugify_filename(company)
@@ -185,16 +121,6 @@ def job_desc_mentions_salary(text: str) -> bool:
         return False
     t = text.lower()
     return bool(re.search(r"\$\s?\d{2,3}(?:,\d{3})+|\b\d{2,3}\s?k\b|compensation|salary range|base pay", t))
-
-
-def grounded_has_gaps(gap_result: dict | None) -> bool:
-    if not gap_result:
-        return False
-    return bool(
-        (gap_result.get("hard_gaps") or [])
-        or (gap_result.get("partial_gaps") or [])
-        or (gap_result.get("signal_gaps") or [])
-    )
 
 
 def _call_scorer(fn, resume_text: str, job_text: str, min_base: int):
@@ -445,53 +371,22 @@ with col_r:
     job_desc = st.text_area("Job description", height=320)
 
     st.divider()
-    st.subheader("Fill gaps (so outputs stay factual)")
-
-    if st.button("Generate gap questions", use_container_width=True):
-        questions = [
-            "What are 1–2 examples of supporting a CEO or C-suite leader (cadence, priorities, decision support)?",
-            "Do you have an example involving Board materials, QBRs, or executive presentations? What was your role?",
-            "What tools/systems are you strongest in (Office, Google, Slack, Teams, Concur, Workday, ATS, CRM, etc.)?",
-            "Have you managed budgets, purchase orders, invoices, or vendor relationships? Any approximate scope?",
-            "Any experience with confidential matters (reorgs, M&A, HR issues, legal) you can describe at a high level?",
-            "Any example of process improvement (what you changed, why, and the result)?",
-        ]
-        for q in questions:
-            create_gap_question(question=q, gap_type="resume", job_id=None)
-
-        st.success("Gap questions created. Answer them below.")
-        st.session_state["gap_suggestions"] = build_gap_suggestions(resume_text, portfolio_text)
-
-    gaps = list_gap_questions(job_id=None, unanswered_only=True, limit=20)
-    if not gaps:
-        st.caption("No open gap questions yet. Click “Generate gap questions” to create a short set.")
-    else:
-        for item in gaps:
-            st.write(f"**Q:** {item['question']}")
-            ans = st.text_input("Your answer", value="", key=f"gap_answer_{item['id']}")
-            if st.button("Save answer", key=f"gap_save_{item['id']}"):
-                answer_gap_question(question_id=int(item["id"]), answer=ans.strip())
-                st.cache_data.clear()
-                st.rerun()
-    st.divider()
-    st.subheader("Grounded gap questions (from latest run)")
+    st.subheader("Gap Insights (Grounded)")
     
-    job_id_for_gaps = st.session_state.get("last_job_id")
-    if not job_id_for_gaps:
-        st.caption("Score a role to generate grounded gap questions tied to that job.")
+    gap_result = st.session_state.get("last_gap_result")
+    
+    if not st.session_state.get("last_job_id"):
+        st.caption("Score a role to generate grounded gap insights tied to that job.")
+    elif not gap_result:
+        st.caption("No grounded gap result available yet.")
     else:
-        job_gaps = list_gap_questions(job_id=int(job_id_for_gaps), unanswered_only=True, limit=50) or []
-        if not job_gaps:
-            st.caption("No open grounded gap questions for this job.")
-        else:
-            for item in job_gaps:
-                st.write(f"**Q:** {item['question']}")
-                ans = st.text_input("Your answer (grounded)", value="", key=f"job_gap_answer_{item['id']}")
-                if st.button("Save answer", key=f"job_gap_save_{item['id']}"):
-                    answer_gap_question(question_id=int(item["id"]), answer=ans.strip())
-                    st.cache_data.clear()
-                    st.rerun()
-
+        st.write(gap_result.get("summary", ""))
+    
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Hard gaps", len(gap_result.get("hard_gaps") or []))
+        c2.metric("Partial gaps", len(gap_result.get("partial_gaps") or []))
+        c3.metric("Signal gaps", len(gap_result.get("signal_gaps") or []))
+    
     # ✅ Suggested answers from résumé/portfolio
     suggestions = st.session_state.get("gap_suggestions") or {}
     if suggestions:
@@ -563,7 +458,7 @@ if run:
     st.session_state["last_job_text"] = job_desc
 
     # Persist latest grounded gap result for UI
-    st.session_state["last_gap_result"] = gap_result
+    
     st.session_state["gap_result_this_run"] = gap_result
 
     conn = None
