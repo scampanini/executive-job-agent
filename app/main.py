@@ -420,13 +420,15 @@ st.session_state["show_debug"] = show_debug
 result, model_used = score_role(
     resume_text=resume_text,
     job_text=job_desc,
+    use_ai=use_ai,
+    min_base=min_base_for_scoring,
     portfolio_text=portfolio_for_scoring,
     gap_answers_text="",  # removed feature
 )
 
-        # (Optional) persist last score
-        st.session_state["last_score_result"] = result
-        st.session_state["last_model_used"] = model_used
+# Persist last score
+st.session_state["last_score_result"] = result
+st.session_state["last_model_used"] = model_used
     
 # -------------------------
 # Run scoring + grounded gap engine
