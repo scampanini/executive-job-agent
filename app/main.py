@@ -370,7 +370,7 @@ with col_r:
     url = st.text_input("Job URL (optional)", value="")
     job_desc = st.text_area("Job description", height=320)
 
-    st.divider(Ω
+    st.divider()
     st.subheader("Gap Insights (Grounded)")
 
     if not gap_result:
