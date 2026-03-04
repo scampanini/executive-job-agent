@@ -424,9 +424,9 @@ result, model_used = score_role(
     gap_answers_text="",  # removed feature
 )
 
-    # (Optional) persist last score
-    st.session_state["last_score_result"] = result
-    st.session_state["last_model_used"] = model_used
+        # (Optional) persist last score
+        st.session_state["last_score_result"] = result
+        st.session_state["last_model_used"] = model_used
     
 # -------------------------
 # Run scoring + grounded gap engine
