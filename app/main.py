@@ -417,34 +417,13 @@ with col_r:
                     height=120,
                     key=f"sug_{slugify_filename(q)}",
                 )
-                if st.button("Save this as my answer", key=f"sug_save_{slugify_filename(q)}"):
-                    open_qs = list_gap_questions(job_id=None, unanswered_only=True, limit=50) or []
-                    match = next((x for x in open_qs if x.get("question") == q), None)
-                    if match:
-                        answer_gap_question(question_id=int(match["id"]), answer=sug.strip())
-                        st.cache_data.clear()
-                        st.rerun()
-    
+                
 with st.form("score_role_form"):
     run = st.form_submit_button("Score role")
 
-# Put the checkbox OUTSIDE the run block so it doesn't depend on running
-show_debug = st.checkbox("Show grounded debug JSON", value=False, key="show_debug")
+# Put the checkbox OUTSIDE the form so it persists across reruns
+st.checkbox("Show grounded debug JSON", value=False, key="show_debug")
 
-# Score role (gap questions removed)
-result, model_used = score_role(
-    resume_text=resume_text,
-    job_text=job_desc,
-    use_ai=use_ai,
-    min_base=min_base_for_scoring,
-    portfolio_text=portfolio_for_scoring,
-    gap_answers_text="",  # removed feature
-)
-
-# Persist last score
-st.session_state["last_score_result"] = result
-st.session_state["last_model_used"] = model_used
-    
 # -------------------------
 # Run scoring + grounded gap engine
 # -------------------------
@@ -456,6 +435,31 @@ if run:
     if not job_desc.strip():
         st.error("Please paste a job description.")
         st.stop()
+
+    # Always define a default so it can't be undefined
+    min_base_for_scoring = 0
+
+    # Salary gating (optional, safe)
+    try:
+        if "min_base" in locals() and callable(globals().get("job_desc_mentions_salary")):
+            if job_desc_mentions_salary(job_desc):
+                min_base_for_scoring = min_base
+    except Exception:
+        min_base_for_scoring = 0
+
+    # Score role (ONLY when user clicks)
+    result, model_used = score_role(
+        resume_text=resume_text,
+        job_text=job_desc,
+        use_ai=use_ai,
+        min_base=min_base_for_scoring,
+        portfolio_text=portfolio_for_scoring,
+        gap_answers_text="",  # removed feature
+    )
+
+    # Persist last score
+    st.session_state["last_score_result"] = result
+    st.session_state["last_model_used"] = model_used
 
     # Save job + resume
     job_id = save_job(
@@ -473,7 +477,7 @@ if run:
     st.session_state["last_company"] = company or ""
     st.session_state["last_title"] = title or ""
     st.session_state["last_job_text"] = job_desc
-
+    
     # Persist latest grounded gap result for UI
     
     st.session_state["gap_result_this_run"] = gap_result
