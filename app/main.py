@@ -370,15 +370,11 @@ with col_r:
     url = st.text_input("Job URL (optional)", value="")
     job_desc = st.text_area("Job description", height=320)
 
-    st.divider()
+    st.divider(Ω
     st.subheader("Gap Insights (Grounded)")
-    
-    gap_result = st.session_state.get("last_gap_result")
-    
-    if not st.session_state.get("last_job_id"):
-        st.caption("Score a role to generate grounded gap insights tied to that job.")
-    elif not gap_result:
-        st.caption("No grounded gap result available yet.")
+
+    if not gap_result:
+        st.caption("No grounded gap result returned for this run.")
     else:
         st.write(gap_result.get("summary", ""))
     
@@ -386,6 +382,21 @@ with col_r:
         c1.metric("Hard gaps", len(gap_result.get("hard_gaps") or []))
         c2.metric("Partial gaps", len(gap_result.get("partial_gaps") or []))
         c3.metric("Signal gaps", len(gap_result.get("signal_gaps") or []))
+    
+        with st.expander("Hard gaps", expanded=False):
+            for g in (gap_result.get("hard_gaps") or []):
+                st.write(f"- {g.get('text') or g}")
+    
+        with st.expander("Partial gaps", expanded=False):
+            for g in (gap_result.get("partial_gaps") or []):
+                st.write(f"- {g.get('text') or g}")
+    
+        with st.expander("Signal gaps", expanded=False):
+            for g in (gap_result.get("signal_gaps") or []):
+                st.write(f"- {g.get('text') or g}")
+    
+    st.divider()    
+
     
     # ✅ Suggested answers from résumé/portfolio
     suggestions = st.session_state.get("gap_suggestions") or {}
