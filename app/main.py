@@ -2,10 +2,6 @@
 # main.py (STABLE BASELINE)
 # =========================
 
-if "last_gap_result" not in st.session_state:
-    st.session_state["last_gap_result"] = None
-if "gap_result_this_run" not in st.session_state:
-    st.session_state["gap_result_this_run"] = None
 
 # ---- stdlib ----
 import sys
@@ -65,6 +61,11 @@ from app.core.grounded_gap_engine import run_grounded_gap_analysis, save_grounde
 from app.core.job_resume_fetch import get_job_description
 
 
+if "last_gap_result" not in st.session_state:
+    st.session_state["last_gap_result"] = None
+if "gap_result_this_run" not in st.session_state:
+    st.session_state["gap_result_this_run"] = None
+    
 # -------------------------
 # Helpers
 # -------------------------
