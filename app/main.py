@@ -430,7 +430,6 @@ with st.form("score_role_form"):
 
 # Put the checkbox OUTSIDE the run block so it doesn't depend on running
 show_debug = st.checkbox("Show grounded debug JSON", value=False, key="show_debug")
-st.session_state["show_debug"] = show_debug
 
 # Score role (gap questions removed)
 result, model_used = score_role(
@@ -564,7 +563,6 @@ resume_id_ui = st.session_state.get("last_resume_id")
 
 gap_result_ui = st.session_state.get("last_gap_result")
 use_gap_questions_ui = st.session_state.get("last_use_gap_questions", False)
-show_debug = st.session_state.get("show_debug", False)
 
 if show_debug and gap_result_ui:
     with st.expander("🔬 DEBUG – Full grounded gap_result", expanded=False):
