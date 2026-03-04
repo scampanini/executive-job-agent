@@ -374,8 +374,12 @@ with col_r:
     st.divider()
     st.subheader("Gap Insights (Grounded)")
 
-    if not gap_result:
-        st.caption("No grounded gap result returned for this run.")
+    gap_result = st.session_state.get("last_gap_result")
+    
+    if not st.session_state.get("last_job_id"):
+        st.caption("Score a role to generate grounded gap insights tied to that job.")
+    elif not gap_result:
+        st.caption("No grounded gap result available yet.")
     else:
         st.write(gap_result.get("summary", ""))
     
