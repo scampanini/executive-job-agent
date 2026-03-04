@@ -416,13 +416,13 @@ with st.form("score_role_form"):
 show_debug = st.checkbox("Show grounded debug JSON", value=False, key="show_debug")
 st.session_state["show_debug"] = show_debug
 
-    # Score role (gap questions removed)
-    result, model_used = score_role(
-        resume_text=resume_text,
-        job_text=job_desc,
-        portfolio_text=portfolio_for_scoring,
-        gap_answers_text="",  # removed feature
-    )
+# Score role (gap questions removed)
+result, model_used = score_role(
+    resume_text=resume_text,
+    job_text=job_desc,
+    portfolio_text=portfolio_for_scoring,
+    gap_answers_text="",  # removed feature
+)
 
     # (Optional) persist last score
     st.session_state["last_score_result"] = result
