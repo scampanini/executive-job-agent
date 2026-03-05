@@ -571,7 +571,7 @@ resume_id_ui = st.session_state.get("last_resume_id")
 gap_result_ui = st.session_state.get("last_gap_result")
 use_gap_questions_ui = st.session_state.get("last_use_gap_questions", False)
 
-if show_debug and gap_result_ui:
+if st.session_state.get("show_debug") and gap_result_ui:
     with st.expander("🔬 DEBUG – Full grounded gap_result", expanded=False):
         st.json(gap_result_ui)
 
