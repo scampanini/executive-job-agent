@@ -449,7 +449,22 @@ if run:
                 min_base_for_scoring = min_base
     except Exception:
         min_base_for_scoring = 0
+# Always define portfolio_for_scoring so it can't be undefined
+portfolio_for_scoring = ""
 
+# If you have portfolio docs/texts, safely join them
+try:
+    joined = []
+    for p in (portfolio_texts or []):
+        if isinstance(p, dict):
+            joined.append(safe_text(p.get("raw_text") or p.get("text") or ""))
+        else:
+            joined.append(safe_text(p))
+    portfolio_for_scoring = "\n\n".join([x for x in joined if x.strip()])
+except Exception:
+    portfolio_for_scoring = ""
+
+    
     # Score role (ONLY when user clicks)
     result, model_used = score_role(
         resume_text=resume_text,
