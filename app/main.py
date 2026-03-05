@@ -201,7 +201,10 @@ def get_latest_grounded_gap_result(conn, job_id: int):
     """
     try:
         cur = conn.cursor()
-
+        # ... rest of your query logic here ...
+    except Exception:
+        return None
+    
         # discover columns
         cur.execute("PRAGMA table_info(grounded_gap_results)")
         cols = [r[1] for r in cur.fetchall()]  # (cid, name, type, notnull, dflt, pk)
@@ -422,7 +425,7 @@ with st.form("score_role_form"):
     run = st.form_submit_button("Score role")
 
 # Put the checkbox OUTSIDE the form so it persists across reruns
-st.checkbox("Show grounded debug JSON", value=False, key="show_debug")
+st.checkbox("Show grounded debug JSON", key="show_debug", value=False)
 
 # -------------------------
 # Run scoring + grounded gap engine
@@ -515,7 +518,7 @@ if run:
         else:
             st.warning("Grounded gap engine returned no result; nothing was saved.")
 
-        if show_debug:
+        if st.session_state.get("show_debug"):
             st.caption(f"DEBUG: grounded gap save attempted; job_id={job_id}")
 
         # ---- Merge portfolio into scoring context even if user didn't re-upload this session ----
@@ -621,7 +624,7 @@ if result_ui is None:
     st.info("No score generated yet. Click “Score role”.")
 elif isinstance(result_ui, dict) and result_ui.get("error"):
     st.warning(result_ui["error"])
-    if show_debug:
+    if st.session_state.get("show_debug"):
         st.json(result_ui)
 elif not isinstance(result_ui, dict):
     st.write(result_ui)
