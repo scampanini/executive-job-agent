@@ -6,7 +6,14 @@ from app.utils import safe_text, token_overlap_score, top_matching_lines
 REQ_BUCKETS = {
     "board": ["board", "board materials", "committee", "governance", "qbr"],
     "c_suite": ["ceo", "president", "c-suite", "executive leadership", "evp", "svp"],
-    "transformation": ["transformation", "turnaround", "reorg", "integration", "change management", "enterprise-wide"],
+    "transformation": [
+        "transformation",
+        "turnaround",
+        "reorg",
+        "integration",
+        "change management",
+        "enterprise-wide",
+    ],
     "brand": ["brand", "reputation", "thought leadership", "positioning", "corporate visibility"],
     "media": ["media", "earned media", "press", "journalist", "spokesperson", "public relations"],
     "crisis": ["crisis", "issues management", "reputation risk", "litigation", "regulatory"],
@@ -24,20 +31,25 @@ def extract_requirements(job_description: str) -> List[Dict[str, Any]]:
 
     seen = set()
     req_id = 1
+
     for line in lines:
         line_l = line.lower()
         matched_tags = [k for k, kws in REQ_BUCKETS.items() if any(kw in line_l for kw in kws)]
+
         if matched_tags or len(line.split()) >= 7:
             norm = line_l[:180]
             if norm in seen:
                 continue
             seen.add(norm)
+
             reqs.append(
                 {
                     "requirement_id": f"REQ-{req_id:03d}",
                     "text": line,
                     "tags": matched_tags,
-                    "must_have": any(x in line_l for x in ["must", "required", "responsible", "accountable"]),
+                    "must_have": any(
+                        x in line_l for x in ["must", "required", "responsible", "accountable"]
+                    ),
                 }
             )
             req_id += 1
@@ -47,9 +59,10 @@ def extract_requirements(job_description: str) -> List[Dict[str, Any]]:
 
 def match_requirement(requirement_text: str, candidate_text: str) -> Dict[str, Any]:
     evidence = top_matching_lines(candidate_text, requirement_text, limit=3)
+
     match_strength = 0.0
     if evidence:
-        match_strength = max(token_overlap_score(x, requirement_text) for x in evidence)
+        match_strength = max(token_overlap_score(line, requirement_text) for line in evidence)
 
     if match_strength >= 0.33:
         classification = "match"
@@ -83,7 +96,10 @@ def run_grounded_gap_analysis(
     portfolio_texts: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     combined = safe_text(resume_text)
-    portfolio_joined = "\n\n".join([safe_text(x) for x in (portfolio_texts or []) if safe_text(x)])
+
+    portfolio_joined = "\n\n".join(
+        [safe_text(x) for x in (portfolio_texts or []) if safe_text(x)]
+    )
     if portfolio_joined:
         combined += "\n\n" + portfolio_joined
 
@@ -95,13 +111,14 @@ def run_grounded_gap_analysis(
     strong_matches: List[Dict[str, Any]] = []
 
     for req in requirements:
-        m = match_requirement(req["text"], combined)
+        match = match_requirement(req["text"], combined)
+
         item = {
             "requirement_id": req["requirement_id"],
             "text": req["text"],
             "tags": req["tags"],
             "must_have": req["must_have"],
-            **m,
+            **match,
         }
         all_matches.append(item)
 
