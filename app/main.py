@@ -156,18 +156,17 @@ def score_role(
         combined += "\n\n=== GAP ANSWERS (USER-PROVIDED) ===\n"
         combined += gap_answers_text.strip()
 
-    if use_ai:
-        try:
-            return (_call_scorer(blended_score, combined, job_text, min_base), "openai")
-        except Exception as e:
-            # Safe fallback
-            base = _call_scorer(heuristic_score, combined, job_text, min_base)
-            if isinstance(base, dict):
-                base = {"error": f"AI scoring failed; falling back to heuristic scoring. Details: {e}", **base}
-            return (base, "heuristic")
+# ---- Safe defaults (root level) ----
+if "show_debug" not in st.session_state:
+    st.session_state["show_debug"] = False
+if "last_score_result" not in st.session_state:
+    st.session_state["last_score_result"] = None
+if "last_model_used" not in st.session_state:
+    st.session_state["last_model_used"] = None
 
-    return (_call_scorer(heuristic_score, combined, job_text, min_base), "heuristic")
-
+# Always-available defaults so variables never NameError
+portfolio_for_scoring = ""
+min_base_for_scoring = 0
 
 @st.cache_data(ttl=15)
 def make_donut_figure(labels: tuple, values: tuple, title: str):
@@ -424,61 +423,49 @@ with col_r:
 with st.form("score_role_form"):
     run = st.form_submit_button("Score role")
 
-# Put the checkbox OUTSIDE the form so it persists across reruns
 st.checkbox("Show grounded debug JSON", key="show_debug", value=False)
 
-# -------------------------
-# Run scoring + grounded gap engine
-# -------------------------
 if run:
     if not resume_text.strip():
         st.error("Please upload your résumé first.")
         st.stop()
-
     if not job_desc.strip():
         st.error("Please paste a job description.")
         st.stop()
 
-    # Always define a default so it can't be undefined
-    min_base_for_scoring = 0
-
-    # Salary gating (optional, safe)
+    # Build portfolio_for_scoring safely (only if you have portfolio_texts)
     try:
-        if "min_base" in locals() and callable(globals().get("job_desc_mentions_salary")):
+        joined = []
+        for p in (portfolio_texts or []):
+            if isinstance(p, dict):
+                joined.append(safe_text(p.get("raw_text") or p.get("text") or ""))
+            else:
+                joined.append(safe_text(p))
+        portfolio_for_scoring = "\n\n".join([x for x in joined if x.strip()])
+    except Exception:
+        portfolio_for_scoring = ""
+
+    # Compute min_base_for_scoring safely
+    min_base_for_scoring = 0
+    try:
+        if callable(globals().get("job_desc_mentions_salary")) and "min_base" in locals():
             if job_desc_mentions_salary(job_desc):
                 min_base_for_scoring = min_base
     except Exception:
         min_base_for_scoring = 0
-# Always define portfolio_for_scoring so it can't be undefined
-portfolio_for_scoring = ""
 
-# If you have portfolio docs/texts, safely join them
-try:
-    joined = []
-    for p in (portfolio_texts or []):
-        if isinstance(p, dict):
-            joined.append(safe_text(p.get("raw_text") or p.get("text") or ""))
-        else:
-            joined.append(safe_text(p))
-    portfolio_for_scoring = "\n\n".join([x for x in joined if x.strip()])
-except Exception:
-    portfolio_for_scoring = ""
-
-    
-    # Score role (ONLY when user clicks)
+    # ---- Call score_role ONLY here ----
     result, model_used = score_role(
         resume_text=resume_text,
         job_text=job_desc,
         use_ai=use_ai,
         min_base=min_base_for_scoring,
         portfolio_text=portfolio_for_scoring,
-        gap_answers_text="",  # removed feature
+        gap_answers_text="",
     )
 
-    # Persist last score
     st.session_state["last_score_result"] = result
     st.session_state["last_model_used"] = model_used
-
     # Save job + resume
     job_id = save_job(
         description=job_desc,
