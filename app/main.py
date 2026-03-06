@@ -429,43 +429,16 @@ if run:
     if not resume_text.strip():
         st.error("Please upload your résumé first.")
         st.stop()
+
     if not job_desc.strip():
         st.error("Please paste a job description.")
         st.stop()
 
-    # Build portfolio_for_scoring safely (only if you have portfolio_texts)
-    try:
-        joined = []
-        for p in (portfolio_texts or []):
-            if isinstance(p, dict):
-                joined.append(safe_text(p.get("raw_text") or p.get("text") or ""))
-            else:
-                joined.append(safe_text(p))
-        portfolio_for_scoring = "\n\n".join([x for x in joined if x.strip()])
-    except Exception:
-        portfolio_for_scoring = ""
-
-    # Compute min_base_for_scoring safely
+    # Safe defaults
     min_base_for_scoring = 0
-    try:
-        if callable(globals().get("job_desc_mentions_salary")) and "min_base" in locals():
-            if job_desc_mentions_salary(job_desc):
-                min_base_for_scoring = min_base
-    except Exception:
-        min_base_for_scoring = 0
+    portfolio_for_scoring = ""
+    gap_result = None
 
-    # ---- Call score_role ONLY here ----
-    result, model_used = score_role(
-        resume_text=resume_text,
-        job_text=job_desc,
-        use_ai=use_ai,
-        min_base=min_base_for_scoring,
-        portfolio_text=portfolio_for_scoring,
-        gap_answers_text="",
-    )
-
-    st.session_state["last_score_result"] = result
-    st.session_state["last_model_used"] = model_used
     # Save job + resume
     job_id = save_job(
         description=job_desc,
@@ -482,10 +455,6 @@ if run:
     st.session_state["last_company"] = company or ""
     st.session_state["last_title"] = title or ""
     st.session_state["last_job_text"] = job_desc
-    
-    # Persist latest grounded gap result for UI
-    
-    st.session_state["gap_result_this_run"] = gap_result
 
     conn = None
     try:
@@ -503,6 +472,7 @@ if run:
             portfolio_texts=portfolio_texts,
         )
 
+        # Run grounded gap analysis
         gap_result = run_grounded_gap_analysis(
             conn=conn,
             resume_id=resume_id,
@@ -514,7 +484,6 @@ if run:
         st.session_state["gap_result_this_run"] = gap_result
         st.session_state["job_id"] = job_id
 
-        # ---- Save grounded result (independent of use_gap_questions) ----
         if gap_result:
             save_grounded_gap_result(conn=conn, resume_id=resume_id, job_id=job_id, result=gap_result)
         else:
@@ -523,35 +492,56 @@ if run:
         if st.session_state.get("show_debug"):
             st.caption(f"DEBUG: grounded gap save attempted; job_id={job_id}")
 
-        # ---- Merge portfolio into scoring context even if user didn't re-upload this session ----
-        if portfolio_text.strip():
-            portfolio_for_scoring = portfolio_text
-        else:
-            joined = []
-            for p in (portfolio_texts or []):
-                if isinstance(p, dict):
-                    joined.append(safe_text(p.get("raw_text") or p.get("text") or ""))
-                else:
-                    joined.append(safe_text(p))
-            portfolio_for_scoring = "\n\n".join([x for x in joined if x.strip()])
+        # Build portfolio_for_scoring safely
+        joined = []
+        for p in (portfolio_texts or []):
+            if isinstance(p, dict):
+                joined.append(safe_text(p.get("raw_text") or p.get("text") or ""))
+            else:
+                joined.append(safe_text(p))
+        portfolio_for_scoring = "\n\n".join([x for x in joined if x.strip()])
 
-        min_base_for_scoring = min_base if job_desc_mentions_salary(job_desc) else 0
-        # ---- Blended scoring (always run) ----
-        result, model_used = score_role(
+        # Compute min_base_for_scoring safely
+        try:
+            if callable(globals().get("job_desc_mentions_salary")) and "min_base" in locals():
+                if job_desc_mentions_salary(job_desc):
+                    min_base_for_scoring = min_base
+        except Exception:
+            min_base_for_scoring = 0
+
+        # ONE scoring call only
+        score_output = score_role(
             resume_text=resume_text,
             job_text=job_desc,
             use_ai=use_ai,
             min_base=min_base_for_scoring,
             portfolio_text=portfolio_for_scoring,
-            gap_answers_text=gap_answers_text,
+            gap_answers_text="",  # removed feature
         )
+
+        if isinstance(score_output, tuple) and len(score_output) == 2:
+            result, model_used = score_output
+        elif isinstance(score_output, dict):
+            result = score_output
+            model_used = "heuristic"
+        else:
+            result = {
+                "score": 0,
+                "priority": "Low",
+                "why_this_fits": [],
+                "risks_or_gaps": ["Scoring failed unexpectedly."],
+                "top_resume_edits": [],
+                "interview_leverage_points": [],
+                "two_line_pitch": "",
+            }
+            model_used = "error"
 
         st.session_state["last_score_result"] = result
         st.session_state["last_model_used"] = model_used
         st.session_state["last_resume_text"] = resume_text
 
         save_score(job_id=job_id, resume_id=resume_id, result=result, model=model_used)
-        
+
     except Exception as e:
         st.error(f"Run failed: {e}")
     finally:
@@ -560,7 +550,6 @@ if run:
                 conn.close()
             except Exception:
                 pass
-
 
 # -------------------------
 # Persisted UI state
