@@ -12,7 +12,6 @@ from app.db import (
     save_resume,
     save_score,
 )
-from app.gap_engine import run_grounded_gap_analysis
 from app.scoring_engine import score_role
 from app.utils import job_desc_mentions_salary, safe_text
 
@@ -104,11 +103,23 @@ with tab1:
                 gap_answers_text="",
             )
 
-            gap_result = run_grounded_gap_analysis(
-                resume_text=resume_text,
-                job_description=job_desc,
-                portfolio_texts=portfolio_texts,
-            )
+            try:
+                from app.gap_engine import run_grounded_gap_analysis
+            
+                gap_result = run_grounded_gap_analysis(
+                    resume_text=resume_text,
+                    job_description=job_desc,
+                    portfolio_texts=portfolio_texts,
+                )
+            except Exception as e:
+                gap_result = {
+                    "overall_alignment_score": 0,
+                    "summary": f"Grounded gap analysis unavailable: {e}",
+                    "requirements": [],
+                    "hard_gaps": [],
+                    "partial_gaps": [],
+                    "strong_matches": [],
+                }
 
             save_score(conn=conn, job_id=job_id, resume_id=resume_id, result=result, model=model_used)
             save_grounded_gap_result(conn=conn, resume_id=resume_id, job_id=job_id, result=gap_result)
