@@ -1,5 +1,6 @@
 import streamlit as st
 
+from app.file_parsers import load_uploaded_file
 from app.db import (
     get_conn,
     get_latest_grounded_gap_result,
@@ -46,10 +47,41 @@ with tab1:
 
     with col_l:
         st.subheader("1) Candidate inputs")
-        resume_text = st.text_area("Résumé text", height=320)
-        portfolio_text = st.text_area("Portfolio / case study text (optional)", height=220)
+    
+        resume_file = st.file_uploader(
+            "Upload résumé (PDF, DOCX, TXT)",
+            type=["pdf", "docx", "txt"],
+            key="resume_file",
+        )
+        resume_text_manual = st.text_area("Or paste résumé text", height=220)
+    
+        portfolio_file = st.file_uploader(
+            "Upload portfolio / case study file (PDF, DOCX, TXT)",
+            type=["pdf", "docx", "txt"],
+            key="portfolio_file",
+        )
+        portfolio_text_manual = st.text_area("Or paste portfolio / case study text", height=180)
+    
         use_ai = st.checkbox("Use OpenAI scoring", value=True)
-        min_base = st.number_input("Minimum score floor when salary is present", min_value=0, max_value=100, value=0, step=1)
+        min_base = st.number_input(
+            "Minimum score floor when salary is present",
+            min_value=0,
+            max_value=100,
+            value=0,
+            step=1,
+        )
+    
+        resume_file_text = load_uploaded_file(resume_file) if resume_file else ""
+        portfolio_file_text = load_uploaded_file(portfolio_file) if portfolio_file else ""
+    
+        resume_text = resume_file_text or resume_text_manual
+        portfolio_text = portfolio_file_text or portfolio_text_manual
+    
+        if resume_file and resume_text:
+            st.caption(f"Loaded résumé file: {resume_file.name}")
+    
+        if portfolio_file and portfolio_text:
+            st.caption(f"Loaded portfolio file: {portfolio_file.name}")
 
     with col_r:
         st.subheader("2) Job description")
