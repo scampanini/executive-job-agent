@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from app.utils import safe_text, token_overlap_score, top_matching_lines
 
@@ -80,7 +80,7 @@ def summarize_gap_results(matches: List[Dict[str, Any]]) -> str:
 def run_grounded_gap_analysis(
     resume_text: str,
     job_description: str,
-    portfolio_texts: List[str] | None = None,
+    portfolio_texts: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     combined = safe_text(resume_text)
     portfolio_joined = "\n\n".join([safe_text(x) for x in (portfolio_texts or []) if safe_text(x)])
