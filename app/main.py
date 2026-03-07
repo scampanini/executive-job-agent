@@ -45,40 +45,40 @@ tab1, tab2 = st.tabs(["Score Role", "Pipeline Dashboard"])
 with tab1:
     col_l, col_r = st.columns([1, 1])
 
-        with col_l:
-            st.subheader("1) Candidate inputs")
-        
-            resume_file = st.file_uploader(
-                "Upload résumé (PDF, DOCX, TXT)",
-                type=["pdf", "docx", "txt"],
-                key="resume_file",
-            )
-        
-            portfolio_file = st.file_uploader(
-                "Upload portfolio / case study file (PDF, DOCX, TXT)",
-                type=["pdf", "docx", "txt"],
-                key="portfolio_file",
-            )
-        
-            use_ai = st.checkbox("Use OpenAI scoring", value=True)
-        
-            min_base = st.number_input(
-                "Minimum score floor when salary is present",
-                min_value=0,
-                max_value=100,
-                value=0,
-                step=1,
-            )
-        
-            resume_text = load_uploaded_file(resume_file) if resume_file else ""
-            portfolio_text = load_uploaded_file(portfolio_file) if portfolio_file else ""
-        
-            if resume_file:
-                st.caption(f"Loaded résumé file: {resume_file.name}")
-        
-            if portfolio_file:
-                st.caption(f"Loaded portfolio file: {portfolio_file.name}")
-        
+    with col_l:
+        st.subheader("1) Candidate inputs")
+
+        resume_file = st.file_uploader(
+            "Upload résumé (PDF, DOCX, TXT)",
+            type=["pdf", "docx", "txt"],
+            key="resume_file",
+        )
+
+        portfolio_file = st.file_uploader(
+            "Upload portfolio / case study file (PDF, DOCX, TXT)",
+            type=["pdf", "docx", "txt"],
+            key="portfolio_file",
+        )
+
+        use_ai = st.checkbox("Use OpenAI scoring", value=True)
+
+        min_base = st.number_input(
+            "Minimum score floor when salary is present",
+            min_value=0,
+            max_value=100,
+            value=0,
+            step=1,
+        )
+
+        resume_text = load_uploaded_file(resume_file) if resume_file else ""
+        portfolio_text = load_uploaded_file(portfolio_file) if portfolio_file else ""
+
+        if resume_file:
+            st.caption(f"Loaded résumé file: {resume_file.name}")
+
+        if portfolio_file:
+            st.caption(f"Loaded portfolio file: {portfolio_file.name}")
+
     with col_r:
         st.subheader("2) Job description")
         company = st.text_input("Company (optional)", value="")
